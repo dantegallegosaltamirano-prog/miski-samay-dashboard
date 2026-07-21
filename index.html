@@ -1,1 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Panel de Recepción</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #2A2730; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
 
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const T = {
+  bg: "#0E0D0F", bgElevated: "#17151A", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", goldSoft: "#8A6E33", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  red: "#A83E32", green: "#6B8F71", amber: "#B8873B",
+};
+
+// EDITA ESTA LÍNEA si tu backend tiene otra URL
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const REFRESH_MS = 30000;
+
+const navItems = [
+  { icon: "▦", label: "Dashboard", active: true },
+  { icon: "→", label: "Check-in" },
+  { icon: "←", label: "Check-out" },
+  { icon: "☺", label: "Huéspedes" },
+  { icon: "●", label: "Domos" },
+  { icon: "◈", label: "Actividad en Vivo" },
+  { icon: "▤", label: "Reportes" },
+  { icon: "⚙", label: "Configuración" },
+];
+
+const ICONO_POR_CATEGORIA = {
+  gastronomia: "🍽", bebidas: "🍷", experiencia_incluida: "✦",
+  experiencia_premium: "✦", transporte: "🚗", lavanderia: "👕",
+};
+const ETIQUETA_ESTADO = { pendiente: "Pendiente", en_preparacion: "En preparación", entregado: "Entregado" };
+
+function estadoColor(estado) {
+  if (estado === "pendiente") return T.red;
+  if (estado === "en_preparacion") return T.amber;
+  return T.green;
+}
+function iniciales(nombreCompleto = "") {
+  const partes = nombreCompleto.trim().split(/\s+/);
+  if (!partes[0]) return "?";
+  return (partes[0][0] + (partes[1]?.[0] || "")).toUpperCase();
+}
+function formatearHora(valor) {
+  if (!valor) return "Por confirmar";
+  const soloHora = String(valor).match(/\d{2}:\d{2}/);
+  if (soloHora) return soloHora[0];
+  try { return new Date(valor).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return "Por confirmar"; }
+}
+function minutosDesde(fechaISO) {
+  if (!fechaISO) return null;
+  return Math.max(0, Math.round((Date.now() - new Date(fechaISO).getTime()) / 60000));
+}
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE_URL}${path}`);
+  if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+  return res.json();
+}
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+  return res.json();
+}
+
+function DashboardRecepcion() {
+  const [kpis, setKpis] = useState(null);
+  const [llegadas, setLlegadas] = useState([]);
+  const [domos, setDomos] = useState([]);
+  const [actividad, setActividad] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+
+  const cargarTodo = useCallback(async () => {
+    try {
+      const [kpisData, llegadasData, domosData, actividadData] = await Promise.all([
+        apiGet("/api/dashboard/kpis"),
+        apiGet("/api/reservas/llegadas-hoy"),
+        apiGet("/api/domos"),
+        apiGet("/api/consumos/pendientes"),
+      ]);
+      setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
+      setUltimaActualizacion(new Date()); setError(null);
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo conectar con el backend: " + API_BASE_URL);
+    } finally { setCargando(false); }
+  }, []);
+
+  useEffect(() => {
+    cargarTodo();
+    const intervalo = setInterval(cargarTodo, REFRESH_MS);
+    return () => clearInterval(intervalo);
+  }, [cargarTodo]);
+
+  const tomarActividad = async (id) => {
+    setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "en_preparacion" } : a)));
+    try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
+    catch (err) { console.error(err); cargarTodo(); }
+  };
+  const hacerCheckin = async (id) => {
+    setLlegadas((prev) => prev.map((l) => (l.id === id ? { ...l, _tomado: true } : l)));
+    try { await apiPost(`/api/reservas/${id}/checkin-simple`, {}); cargarTodo(); }
+    catch (err) { console.error(err); cargarTodo(); }
+  };
+
+  const domoUltimaSync = domos.map((d) => d.ultima_sincronizacion_ical).filter(Boolean).sort().pop();
+
+  return (
+    <div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex" }}>
+      <aside style={{ background: T.bgElevated, borderRight: `1px solid ${T.cardBorder}`, width: 232, padding: "24px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px", marginBottom: 40 }}>
+            <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+              <path d="M15 3 L27 21 H3 Z" stroke="#C9A24B" strokeWidth="1" fill="none" />
+              <path d="M15 3 L15 21 M9 12 L21 12 M6 16.5 L24 16.5" stroke="#C9A24B" strokeWidth="0.6" opacity="0.6" />
+            </svg>
+            <div>
+              <div style={{ fontSize: 15, color: T.ivory }}>Miski Samay</div>
+              <div style={{ color: T.gold, fontSize: 10, letterSpacing: 2 }}>DOMO BOUTIQUE</div>
+            </div>
+          </div>
+          <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {navItems.map((item) => (
+              <div key={item.label} style={{
+                background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
+                color: item.active ? T.gold : T.ivoryMuted,
+                border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
+                display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, fontSize: 13.5,
+              }}>
+                <span style={{ width: 16, textAlign: "center" }}>{item.icon}</span>{item.label}
+              </div>
+            ))}
+          </nav>
+        </div>
+        <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ background: T.gold, color: T.bg, width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600 }}>D</div>
+          <div><div style={{ fontSize: 13 }}>Dante</div><div style={{ color: T.ivoryMuted, fontSize: 11 }}>Recepción</div></div>
+        </div>
+      </aside>
+
+      <main style={{ flex: 1, padding: "32px 40px", maxWidth: 1400 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontSize: 26, margin: 0, color: T.ivory }}>Panel de Recepción</h1>
+            <p style={{ color: T.ivoryMuted, fontSize: 13, marginTop: 4 }}>
+              Valle Sagrado
+              {ultimaActualizacion && <span style={{ color: T.goldSoft }}> · actualizado hace {minutosDesde(ultimaActualizacion) || 0} min</span>}
+            </p>
+          </div>
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center" }}>🔔</div>
+        </div>
+
+        {error && (
+          <div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginBottom: 24 }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        {cargando ? (
+          <div style={{ color: T.ivoryMuted, textAlign: "center", padding: "64px 0" }}>Cargando panel de recepción…</div>
+        ) : (
+          <React.Fragment>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+              <KpiCard label="Llegadas hoy" value={kpis?.llegadasHoy ?? "—"} />
+              <KpiCard label="Salidas hoy" value={kpis?.salidasHoy ?? "—"} />
+              <KpiCard label="Domos libres" value={kpis ? `${kpis.domosLibres} / ${domos.length}` : "—"} accent={T.green} />
+              <KpiCard label="Huéspedes alojados" value={kpis?.huespedesAlojados ?? "—"} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+              <section>
+                <ColumnHeader title="Llegadas del día" count={llegadas.length} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {llegadas.length === 0 && <EmptyState texto="Sin llegadas registradas para hoy." />}
+                  {llegadas.map((l) => (
+                    <div key={l.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                        <div style={{ background: "rgba(201,162,75,0.14)", color: T.gold, border: "1px solid rgba(201,162,75,0.3)", width: 36, height: 36, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                          {iniciales(l.nombre_completo)}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.nombre_completo}</div>
+                          <div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>{l.canal_origen} · {l.booking_id_externo}</div>
+                        </div>
+                        {!l.datos_completos && (
+                          <span style={{ background: "rgba(184,135,59,0.14)", color: T.amber, border: "1px solid rgba(184,135,59,0.3)", fontSize: 9.5, padding: "4px 8px", borderRadius: 999, flexShrink: 0 }}>Requiere OCR</span>
+                        )}
+                      </div>
+                      <div style={{ color: T.ivoryMuted, display: "flex", gap: 16, fontSize: 11.5, marginBottom: 12 }}>
+                        <span>🕐 {formatearHora(l.hora_llegada_estimada)}</span>
+                        <span>{l.adultos} adultos{l.ninos > 0 ? ` · ${l.ninos} niños` : ""}</span>
+                      </div>
+                      <button onClick={() => hacerCheckin(l.id)} disabled={l._tomado || l.estado === "check_in"}
+                        style={{
+                          width: "100%", padding: "8px 0", borderRadius: 12, fontSize: 12.5, fontWeight: 600, letterSpacing: 0.5, cursor: "pointer",
+                          background: l._tomado || l.estado === "check_in" ? "transparent" : T.gold,
+                          color: l._tomado || l.estado === "check_in" ? T.ivoryMuted : T.bg,
+                          border: l._tomado || l.estado === "check_in" ? `1px solid ${T.cardBorder}` : "none",
+                        }}>
+                        {l._tomado || l.estado === "check_in" ? "Check-in iniciado" : "CHECK-IN"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <ColumnHeader title="Actividad en vivo" count={actividad.filter((a) => a.estado === "pendiente").length} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {actividad.length === 0 && <EmptyState texto="No hay pedidos ni actividades pendientes." />}
+                  {actividad.map((a) => (
+                    <div key={a.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
+                      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                        <div style={{ background: "rgba(201,162,75,0.10)", width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          {ICONO_POR_CATEGORIA[a.categoria] || "◈"}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13 }}>{a.descripcion} {a.domo ? `— Domo ${a.domo}` : ""}</div>
+                          <div style={{ color: T.ivoryMuted, fontSize: 11.5, marginTop: 2 }}>🕐 {formatearHora(a.hora_solicitada)}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: estadoColor(a.estado), fontSize: 11, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ background: estadoColor(a.estado), width: 6, height: 6, borderRadius: "50%", display: "inline-block" }}></span>
+                          {ETIQUETA_ESTADO[a.estado] || a.estado}
+                        </span>
+                        {a.estado === "pendiente" && (
+                          <button onClick={() => tomarActividad(a.id)} style={{ color: T.gold, border: "1px solid rgba(201,162,75,0.35)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>TOMAR</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <ColumnHeader title="Estado de domos" count={domos.length} />
+                <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 8 }}>
+                  {domos.length === 0 && <EmptyState texto="Sin domos configurados todavía." />}
+                  {domos.map((d, i) => {
+                    const ocupado = d.estado_ocupacion === "ocupado";
+                    return (
+                      <div key={d.codigo} style={{ borderBottom: i < domos.length - 1 ? `1px solid ${T.cardBorder}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <span style={{ background: ocupado ? T.red : T.green, width: 10, height: 10, borderRadius: "50%", display: "inline-block", flexShrink: 0 }}></span>
+                          <div><div style={{ fontSize: 13 }}>{d.codigo}</div><div style={{ color: T.ivoryMuted, fontSize: 11 }}>{d.nombre}</div></div>
+                        </div>
+                        <span style={{ color: ocupado ? T.red : T.green, fontSize: 11, fontWeight: 500 }}>{ocupado ? "Ocupado" : "Libre"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
+                  <span>🌙</span>
+                  <p style={{ color: T.ivoryMuted, fontSize: 11.5, margin: 0 }}>
+                    {domoUltimaSync ? `Sincronización con Aloha (iCal) activa — última actualización hace ${minutosDesde(domoUltimaSync)} min.` : "Sin sincronización iCal registrada todavía."}
+                  </p>
+                </div>
+              </section>
+            </div>
+          </React.Fragment>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, accent }) {
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={{ color: T.ivoryMuted, fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
+      </div>
+      <div style={{ fontSize: 26, color: T.ivory }}>{value}</div>
+    </div>
+  );
+}
+function ColumnHeader({ title, count }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
+      <h2 style={{ fontSize: 15, color: T.ivory, margin: 0 }}>{title}</h2>
+      <span style={{ color: T.goldSoft, fontSize: 11 }}>{count}</span>
+    </div>
+  );
+}
+function EmptyState({ texto }) {
+  return <div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 16, padding: 24, fontSize: 12, textAlign: "center" }}>{texto}</div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<DashboardRecepcion />);
+</script>
+</body>
+</html>
