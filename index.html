@@ -184,7 +184,7 @@ function DashboardRecepcion() {
               <KpiCard label="Llegadas hoy" value={kpis?.llegadasHoy ?? "—"} />
               <KpiCard label="Salidas hoy" value={kpis?.salidasHoy ?? "—"} />
               <KpiCard label="Domos libres" value={kpis ? `${kpis.domosLibres} / ${domos.length}` : "—"} accent={T.green} />
-              <KpiCard label="Huéspedes alojados" value={kpis?.huespedesAlojados ?? "—"} />
+              <KpiCard label="Domos Ocupados" value={kpis?.huespedesAlojados ?? "—"} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
