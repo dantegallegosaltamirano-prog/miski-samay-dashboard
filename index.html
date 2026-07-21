@@ -90,16 +90,18 @@ function DashboardRecepcion() {
   const [error, setError] = useState(null);
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
     const [movimiento, setMovimiento] = useState([]);
-
+    
   const cargarTodo = useCallback(async () => {
     try {
-      const [kpisData, llegadasData, domosData, actividadData] = await Promise.all([
+      const [kpisData, llegadasData, domosData, actividadData, movimientoData] = await Promise.all([
         apiGet("/api/dashboard/kpis"),
         apiGet("/api/reservas/llegadas-hoy"),
         apiGet("/api/domos"),
         apiGet("/api/consumos/pendientes"),
+        apiGet("/api/dashboard/movimiento"),
       ]);
       setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
+      setMovimiento(movimientoData.dias || []);
       setUltimaActualizacion(new Date()); setError(null);
     } catch (err) {
       console.error(err);
@@ -185,8 +187,37 @@ function DashboardRecepcion() {
               <KpiCard label="Llegadas hoy" value={kpis?.llegadasHoy ?? "—"} />
               <KpiCard label="Salidas hoy" value={kpis?.salidasHoy ?? "—"} />
               <KpiCard label="Domos libres" value={kpis ? `${kpis.domosLibres} / ${domos.length}` : "—"} accent={T.green} />
-              <KpiCard label="Domos Ocupados" value={kpis?.huespedesAlojados ?? "—"} />
+              <KpiCard label="Domos Ocupados" value={kpis?.huespedesAlojados ?? "–"} />
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Movimiento de huéspedes</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+          {movimiento.map((d) => (
+            <div key={d.fecha} style={{
+              background: d.offset === 0 ? "rgba(201,162,75,0.12)" : T.bg,
+              border: d.offset === 0 ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+              borderRadius: 12, padding: 10
+            }}>
+              <div style={{ fontSize: 11, color: d.offset === 0 ? T.gold : T.ivoryMuted }}>
+                {new Date(d.fecha + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric" })}
+              </div>
+              <div style={{ fontSize: 10, color: T.ivoryMuted, marginBottom: 8 }}>
+                {d.offset === 0 ? "Hoy" : d.offset < 0 ? `${-d.offset} día(s) antes` : `+${d.offset} día(s)`}
+              </div>
+              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: T.ivoryMuted }}>Llegan</span><span>{d.llegan}</span>
+              </div>
+              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: T.ivoryMuted }}>Salen</span><span>{d.salen}</span>
+              </div>
+              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between", borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 6 }}>
+                <span style={{ color: T.ivoryMuted }}>En casa</span><span>{d.enCasa}</span>
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
               <section>
