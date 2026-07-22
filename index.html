@@ -121,10 +121,8 @@ function DashboardRecepcion() {
     try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
     catch (err) { console.error(err); cargarTodo(); }
   };
-  const hacerCheckin = async (id) => {
-    setLlegadas((prev) => prev.map((l) => (l.id === id ? { ...l, _tomado: true } : l)));
-    try { await apiPost(`/api/reservas/${id}/checkin-simple`, {}); cargarTodo(); }
-    catch (err) { console.error(err); cargarTodo(); }
+ const hacerCheckin = (id) => {
+    window.location.href = `checkin.html?id=${id}`;
   };
 
   const domoUltimaSync = domos.map((d) => d.ultima_sincronizacion_ical).filter(Boolean).sort().pop();
