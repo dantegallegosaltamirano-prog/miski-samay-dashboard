@@ -90,6 +90,7 @@ function DashboardRecepcion() {
   const [error, setError] = useState(null);
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
     const [movimiento, setMovimiento] = useState([]);
+    const [diaSeleccionado, setDiaSeleccionado] = useState(0);
     
   const cargarTodo = useCallback(async () => {
     try {
