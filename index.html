@@ -188,10 +188,11 @@ function DashboardRecepcion() {
       <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
         <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Movimiento de huéspedes</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-          {movimiento.map((d) => (
-            <div key={d.fecha} style={{
-              background: d.offset === 0 ? "rgba(201,162,75,0.12)" : T.bg,
-              border: d.offset === 0 ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+          {movimiento.map((d, idx) => (
+            <div key={d.fecha} onClick={() => setDiaSeleccionado(idx)} style={{
+              cursor: "pointer",
+              background: idx === diaSeleccionado ? "rgba(201,162,75,0.12)" : T.bg,
+              border: idx === diaSeleccionado ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
               borderRadius: 12, padding: 10
             }}>
               <div style={{ fontSize: 11, color: d.offset === 0 ? T.gold : T.ivoryMuted }}>
