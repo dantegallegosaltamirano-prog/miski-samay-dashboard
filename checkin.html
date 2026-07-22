@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Check-in</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #2A2730; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+const T = {
+  bg: "#0E0D0F", bgElevated: "#17151A", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", goldSoft: "#8A6E33", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  red: "#A83E32", green: "#6B8F71", amber: "#B88873",
+};
+
+function fmt(n) {
+  const v = Number(n) || 0;
+  return v.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function QRSimulado({ texto }) {
+  const celdas = React.useMemo(() => {
+    let seed = 0;
+    for (let i = 0; i < texto.length; i++) seed += texto.charCodeAt(i);
+    const arr = [];
+    for (let i = 0; i < 100; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      arr.push(seed / 233280 > 0.5);
+    }
+    return arr;
+  }, [texto]);
+  return (
+    <div style={{ width: 140, height: 140, background: "#fff", padding: 8, borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 1, margin: "0 auto" }}>
+      {celdas.map((on, i) => (
+        <div key={i} style={{ background: on ? "#111" : "#fff" }} />
+      ))}
+    </div>
+  );
+}
+
+function CheckIn() {
+  const reserva = {
+    id: "1944", canal: "Directo", huespedPax: 1,
+    fechas: ["2026-07-21", "2026-07-22", "2026-07-23"],
+    etiquetaFechas: "21-24 jul · 3 noches",
+  };
+
+  const [nombre, setNombre] = useState("");
+  const [documento, setDocumento] = useState("");
+  const [escaneado, setEscaneado] = useState(false);
+
+  const [tipoCambio, setTipoCambio] = useState("3.75");
+  const [canal, setCanal] = useState(reserva.canal);
+  const [noches, setNoches] = useState(
+    reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "" }))
+  );
+  const [domoSel, setDomoSel] = useState(null);
+  const [completado, setCompletado] = useState(false);
+
+  const domos = ["D1", "D2", "D3", "D4", "D5", "D6"];
+
+  function simularEscaneo() {
+    setNombre("Karen Betsabé Condori");
+    setDocumento("Perú · DNI 45812093");
+    setEscaneado(true);
+  }
+
+  function actualizarNoche(i, campo, valor) {
+    const copia = [...noches];
+    copia[i] = { ...copia[i], [campo]: valor };
+    setNoches(copia);
+  }
+
+  function totalNoche(n) {
+    return (Number(n.base) || 0) + (Number(n.impuesto) || 0) + (Number(n.servicio) || 0);
+  }
+
+  const totales = useMemo(() => {
+    const base = noches.reduce((s, n) => s + (Number(n.base) || 0), 0);
+    const impuesto = noches.reduce((s, n) => s + (Number(n.impuesto) || 0), 0);
+    const servicio = noches.reduce((s, n) => s + (Number(n.servicio) || 0), 0);
+    const totalUsd = base + impuesto + servicio;
+    const totalSoles = totalUsd * (Number(tipoCambio) || 0);
+    return { base, impuesto, servicio, totalUsd, totalSoles };
+  }, [noches, tipoCambio]);
+
+  function esFinDeSemana(fechaStr) {
+    const d = new Date(fechaStr + "T12:00:00").getDay();
+    return d === 5 || d === 6;
+  }
+
+  function diaCorto(fechaStr) {
+    return new Date(fechaStr + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
+  }
+
+  function completarCheckIn() {
+    if (!domoSel) { alert("Selecciona un domo antes de continuar."); return; }
+    if (!escaneado) { alert("Escanea el documento del huésped antes de continuar."); return; }
+    setCompletado(true);
+  }
+
+  const inputStyle = { width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "6px 8px", fontSize: 12.5 };
+  const labelMuted = { fontSize: 11, color: T.ivoryMuted };
+
+  if (completado) {
+    const codigoQR = `MISKI-${reserva.id}-${domoSel}`;
+    return (
+      <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 32, maxWidth: 420, textAlign: "center" }}>
+          <div style={{ color: T.green, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Check-in completado</div>
+          <div style={{ fontSize: 13, color: T.ivoryMuted, marginBottom: 20 }}>{nombre} · Domo {domoSel}</div>
+          <QRSimulado texto={codigoQR} />
+          <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>{codigoQR}</div>
+          <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Total estadía (US$)</span><span>US$ {fmt(totales.totalUsd)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 15 }}><span>Total a cobrar (S/)</span><span style={{ color: T.gold }}>S/ {fmt(totales.totalSoles)}</span></div>
+          </div>
+          <a href="index.html" style={{ display: "block", marginTop: 24, color: T.gold, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+
+        <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 20px" }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>Check-in — reserva {canal} · {reserva.id}</div>
+            <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginTop: 2 }}>{reserva.huespedPax} adulto(s) · {reserva.etiquetaFechas}</div>
+          </div>
+          <span style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 8, background: "rgba(184,136,115,0.15)", color: T.amber }}>Por confirmar</span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Documento</div>
+            <button onClick={simularEscaneo} style={{ width: "100%", marginBottom: 8, background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>📷 Foto</button>
+            <button onClick={simularEscaneo} style={{ width: "100%", background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>🖨 Escáner</button>
+          </div>
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Datos leídos</div>
+            <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Nombre completo" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+            <input style={inputStyle} placeholder="Nacionalidad · N° documento" value={documento} onChange={(e) => setDocumento(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Tarifa de alojamiento (US$)</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select value={canal} onChange={(e) => setCanal(e.target.value)} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "4px 8px", fontSize: 12 }}>
+                <option>Directo</option><option>Booking.com</option><option>Expedia</option><option>Airbnb</option>
+              </select>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "4px 8px" }}>
+                <span style={labelMuted}>T.C.</span>
+                <input value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} style={{ width: 46, background: "transparent", border: "none", color: T.ivory, fontSize: 12 }} />
+              </div>
+            </div>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ color: T.ivoryMuted, fontSize: 11 }}>
+                <td style={{ padding: "0 6px 6px 0" }}>Noche</td>
+                <td style={{ padding: "0 6px 6px" }}>Base US$</td>
+                <td style={{ padding: "0 6px 6px" }}>Impuesto</td>
+                <td style={{ padding: "0 6px 6px" }}>Servicio</td>
+                <td style={{ padding: "0 0 6px 6px", textAlign: "right" }}>Total US$</td>
+              </tr>
+            </thead>
+            <tbody>
+              {noches.map((n, i) => (
+                <tr key={n.fecha} style={{ borderTop: `1px solid ${T.cardBorder}` }}>
+                  <td style={{ padding: "6px 6px 6px 0" }}>
+                    {diaCorto(n.fecha)}<br />
+                    <span style={{ fontSize: 10.5, color: esFinDeSemana(n.fecha) ? T.gold : T.ivoryMuted }}>{esFinDeSemana(n.fecha) ? "fin de semana" : "regular"}</span>
+                  </td>
+                  <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.base} onChange={(e) => actualizarNoche(i, "base", e.target.value)} /></td>
+                  <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.impuesto} onChange={(e) => actualizarNoche(i, "impuesto", e.target.value)} /></td>
+                  <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.servicio} onChange={(e) => actualizarNoche(i, "servicio", e.target.value)} /></td>
+                  <td style={{ padding: "6px 0 6px 6px", textAlign: "right", fontWeight: 600 }}>US$ {fmt(totalNoche(n))}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: `1px solid ${T.ivoryMuted}` }}>
+                <td style={{ padding: "8px 6px 0 0", fontWeight: 600 }}>Total estadía</td>
+                <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.base)}</td>
+                <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.impuesto)}</td>
+                <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.servicio)}</td>
+                <td style={{ padding: "8px 0 0 6px", textAlign: "right", fontWeight: 600, fontSize: 15 }}>US$ {fmt(totales.totalUsd)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(201,162,75,0.12)", borderRadius: 8, padding: "10px 12px", marginTop: 10 }}>
+            <span style={{ fontSize: 13, color: T.gold }}>Total a cobrar (S/) · TC {tipoCambio || "0"}</span>
+            <span style={{ fontSize: 17, fontWeight: 600, color: T.gold }}>S/ {fmt(totales.totalSoles)}</span>
+          </div>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>Ver montos y tipo de cambio en Aloha · no llegan por iCal</div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Asignar domo</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+            {domos.map((d) => (
+              <button key={d} onClick={() => setDomoSel(d)} style={{
+                padding: "10px 0", borderRadius: 8, cursor: "pointer",
+                border: domoSel === d ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: domoSel === d ? "rgba(201,162,75,0.15)" : "transparent",
+                color: domoSel === d ? T.gold : T.ivory,
+              }}>{d}</button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={completarCheckIn} style={{ width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          ✓ Completar check-in y generar QR
+        </button>
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<CheckIn />);
+</script>
+</body>
+</html>
