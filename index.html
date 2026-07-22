@@ -278,25 +278,8 @@ function DashboardRecepcion() {
                   ))}
                 </div>
               </section>
-
-              <section>
-                <ColumnHeader title="Estado de domos" count={domos.length} />
-                <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 8 }}>
-                  {domos.length === 0 && <EmptyState texto="Sin domos configurados todavía." />}
-                  {domos.map((d, i) => {
-                    const ocupado = d.estado_ocupacion === "ocupado";
-                    return (
-                      <div key={d.codigo} style={{ borderBottom: i < domos.length - 1 ? `1px solid ${T.cardBorder}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <span style={{ background: ocupado ? T.red : T.green, width: 10, height: 10, borderRadius: "50%", display: "inline-block", flexShrink: 0 }}></span>
-                          <div><div style={{ fontSize: 13 }}>{d.codigo}</div><div style={{ color: T.ivoryMuted, fontSize: 11 }}>{d.nombre}</div></div>
-                        </div>
-                        <span style={{ color: ocupado ? T.red : T.green, fontSize: 11, fontWeight: 500 }}>{ocupado ? "Ocupado" : "Libre"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
+             <section>
+             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
                   <span>🌙</span>
                   <p style={{ color: T.ivoryMuted, fontSize: 11.5, margin: 0 }}>
                     {domoUltimaSync ? `Sincronización con Aloha (iCal) activa — última actualización hace ${minutosDesde(domoUltimaSync)} min.` : "Sin sincronización iCal registrada todavía."}
