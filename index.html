@@ -213,6 +213,31 @@ function DashboardRecepcion() {
             </div>
           ))}
         </div>
+{movimiento[diaSeleccionado] && (
+          <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 16, paddingTop: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Llegan ({movimiento[diaSeleccionado].detalleLlegan.length})</div>
+              {movimiento[diaSeleccionado].detalleLlegan.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+              {movimiento[diaSeleccionado].detalleLlegan.map((h, i) => (
+                <div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Salen ({movimiento[diaSeleccionado].detalleSalen.length})</div>
+              {movimiento[diaSeleccionado].detalleSalen.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+              {movimiento[diaSeleccionado].detalleSalen.map((h, i) => (
+                <div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>En casa ({movimiento[diaSeleccionado].detalleEnCasa.length})</div>
+              {movimiento[diaSeleccionado].detalleEnCasa.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+              {movimiento[diaSeleccionado].detalleEnCasa.map((h, i) => (
+                <div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
