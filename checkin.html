@@ -52,25 +52,57 @@ function QRSimulado({ texto }) {
 }
 
 function CheckIn() {
-  const reserva = {
-    id: "1944", canal: "Directo", huespedPax: 1,
-    fechas: ["2026-07-21", "2026-07-22", "2026-07-23"],
-    etiquetaFechas: "21-24 jul · 3 noches",
-  };
+  const params = new URLSearchParams(window.location.search);
+  const reservaId = params.get("id");
+
+  const [reserva, setReserva] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(null);
+
+  React.useEffect(() => {
+    if (!reservaId) { setErrorCarga("No se indicó un ID de reserva en el enlace."); setCargando(false); return; }
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { setErrorCarga(data.error); setCargando(false); return; }
+        const inicio = new Date(data.fecha_llegada);
+        const fin = new Date(data.fecha_salida);
+        const fechas = [];
+        for (let d = new Date(inicio); d < fin; d.setDate(d.getDate() + 1)) {
+          fechas.push(new Date(d).toISOString().slice(0, 10));
+        }
+        setReserva({
+          id: data.id, canal: data.canal_origen || "Directo",
+          huespedPax: data.adultos || 1, fechas,
+          huespedNombre: data.huesped,
+          etiquetaFechas: `${fechas.length} noche(s)`,
+        });
+        setCargando(false);
+      })
+      .catch((err) => { setErrorCarga("No se pudo conectar con el backend."); setCargando(false); });
+  }, [reservaId]);
 
   const [nombre, setNombre] = useState("");
   const [documento, setDocumento] = useState("");
   const [escaneado, setEscaneado] = useState(false);
 
   const [tipoCambio, setTipoCambio] = useState("3.75");
-  const [canal, setCanal] = useState(reserva.canal);
-  const [noches, setNoches] = useState(
-    reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "" }))
-  );
+  const [canal, setCanal] = useState("Directo");
+  const [noches, setNoches] = useState([]);
   const [domoSel, setDomoSel] = useState(null);
   const [completado, setCompletado] = useState(false);
 
   const domos = ["D1", "D2", "D3", "D4", "D5", "D6"];
+
+  React.useEffect(() => {
+    if (reserva) {
+      setCanal(reserva.canal);
+      setNoches(reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "" })));
+      if (reserva.huespedNombre && reserva.huespedNombre !== "Por confirmar en check-in") {
+        setNombre(reserva.huespedNombre);
+      }
+    }
+  }, [reserva]);
 
   function simularEscaneo() {
     setNombre("Karen Betsabé Condori");
