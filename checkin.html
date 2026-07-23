@@ -142,11 +142,32 @@ function CheckIn() {
     return new Date(fechaStr + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
   }
 
-  function completarCheckIn() {
-    if (!domoSel) { alert("Selecciona un domo antes de continuar."); return; }
-    if (!escaneado) { alert("Escanea el documento del huésped antes de continuar."); return; }
-    setCompletado(true);
-  }
+ function completarCheckIn() {
+  if (!domoSel) { alert("Selecciona un domo antes de continuar."); return; }
+  if (!escaneado) { alert("Escanea el documento del huésped antes de continuar."); return; }
+  setEnviando(true);
+  fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reserva.id}/completar-checkin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nombreCompleto: nombre,
+      tipoDocumento: tipoDocumento,
+      numeroDocumento: numeroDocumento,
+      domoCodigo: domoSel,
+      montoTotal: totales.totalUsd
+    })
+  })
+    .then(r => r.json())
+    .then(data => {
+      setEnviando(false);
+      if (data.error) { alert("Error al completar el check-in: " + data.error); return; }
+      setCompletado(true);
+    })
+    .catch(err => {
+      setEnviando(false);
+      alert("No se pudo conectar con el backend. Intenta de nuevo.");
+    });
+}
 
   const inputStyle = { width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "6px 8px", fontSize: 12.5 };
   const labelMuted = { fontSize: 11, color: T.ivoryMuted };
