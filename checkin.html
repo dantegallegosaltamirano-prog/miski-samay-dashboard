@@ -85,6 +85,9 @@ function CheckIn() {
   const [nombre, setNombre] = useState("");
   const [documento, setDocumento] = useState("");
   const [escaneado, setEscaneado] = useState(false);
+  const [tipoDocumento, setTipoDocumento] = useState("");
+  const [numeroDocumento, setNumeroDocumento] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   const [tipoCambio, setTipoCambio] = useState("3.75");
   const [canal, setCanal] = useState("Directo");
