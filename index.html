@@ -111,7 +111,12 @@ function DashboardRecepcion() {
   }, []);
 
   useEffect(() => {
-    cargarTodo();
+    // Al abrir el dashboard, forzamos una sincronización con Aloha antes
+    // de cargar los datos, para que el panel arranque con información
+    // lo más actualizada posible (no esperamos al cron de fondo).
+    fetch(`${API_BASE_URL}/api/sync/ical-now`)
+      .catch(() => {})
+      .finally(() => cargarTodo());
     const intervalo = setInterval(cargarTodo, REFRESH_MS);
     return () => clearInterval(intervalo);
   }, [cargarTodo]);
