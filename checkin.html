@@ -33,21 +33,18 @@ function fmt(n) {
 }
 
 function QRSimulado({ texto }) {
-  const celdas = React.useMemo(() => {
-    let seed = 0;
-    for (let i = 0; i < texto.length; i++) seed += texto.charCodeAt(i);
-    const arr = [];
-    for (let i = 0; i < 100; i++) {
-      seed = (seed * 9301 + 49297) % 233280;
-      arr.push(seed / 233280 > 0.5);
-    }
-    return arr;
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.innerHTML = "";
+    const qr = qrcode(0, "M");
+    qr.addData(texto);
+    qr.make();
+    ref.current.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4 });
   }, [texto]);
   return (
-    <div style={{ width: 140, height: 140, background: "#fff", padding: 8, borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 1, margin: "0 auto" }}>
-      {celdas.map((on, i) => (
-        <div key={i} style={{ background: on ? "#111" : "#fff" }} />
-      ))}
+    <div style={{ width: 140, height: 140, background: "#fff", padding: 8, borderRadius: 8, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div ref={ref} />
     </div>
   );
 }
