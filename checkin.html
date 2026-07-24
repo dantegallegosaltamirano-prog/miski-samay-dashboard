@@ -59,8 +59,13 @@ function CheckIn() {
 
   React.useEffect(() => {
     if (!reservaId) { setErrorCarga("No se indicó un ID de reserva en el enlace."); setCargando(false); return; }
-    fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaId}`)
-      .then((r) => r.json())
+    // Forzamos una sincronización con Aloha antes de traer la reserva,
+    // para que el check-in trabaje con datos lo más actualizados posible.
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/sync/ical-now`)
+      .catch(() => {})
+      .finally(() => {
+        fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaId}`)
+          .then(r => r.json())
       .then((data) => {
         if (data.error) { setErrorCarga(data.error); setCargando(false); return; }
         const inicio = new Date(data.fecha_llegada);
