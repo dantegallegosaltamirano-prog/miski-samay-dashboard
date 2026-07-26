@@ -245,8 +245,10 @@ if (cargando) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
           <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Documento</div>
-            <button onClick={simularEscaneo} style={{ width: "100%", marginBottom: 8, background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>📷 Foto</button>
-            <button onClick={simularEscaneo} style={{ width: "100%", background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>🖨 Escáner</button>
+            <button onClick={() => document.getElementById('inputFotoCamara').click()} style={{ width: "100%", marginBottom: 8, background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>📷 {procesandoOCR ? "Leyendo..." : "Foto"}</button>
+              <button onClick={() => document.getElementById('inputArchivoOCR').click()} style={{ width: "100%", background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}>📷 {procesandoOCR ? "Leyendo..." : "Escáner"}</button>
+              <input id="inputFotoCamara" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => procesarImagenOCR(e.target.files[0])} />
+              <input id="inputArchivoOCR" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => procesarImagenOCR(e.target.files[0])} />
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Datos leídos</div>
