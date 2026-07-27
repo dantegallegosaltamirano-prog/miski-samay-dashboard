@@ -117,10 +117,14 @@ const [mostrarFormAcompanante, setMostrarFormAcompanante] = useState(false);
 const [nuevoAcompanante, setNuevoAcompanante] = useState({ nombre: '', documento: '', numeroDocumento: '' });
 const [procesandoOCRAcompanante, setProcesandoOCRAcompanante] = useState(false);
 
-function procesarImagenOCR(file) {
-  if (!file) return;
-  setProcesandoOCR(true);
-  Tesseract.recognize(file, 'spa+eng')
+function procesarImagenOCR(file, destino = 'principal') {
+    if (!file) return;
+    if (destino === 'principal') {
+      setProcesandoOCR(true);
+    } else {
+      setProcesandoOCRAcompanante(true);
+    }
+    Tesseract.recognize(file, 'spa+eng')
     .then(({ data: { text } }) => {
       const lineas = text.split('\n').map(l => l.trim()).filter(Boolean);
 
