@@ -83,7 +83,8 @@ function CheckIn() {
         });
         setCargando(false);
       })
-      .catch((err) => { setErrorCarga("No se pudo conectar con el backend."); setCargando(false); });
+     .catch((err) => { setErrorCarga("No se pudo conectar con el backend."); setCargando(false); });
+      });
   }, [reservaId]);
 
   const [nombre, setNombre] = useState("");
