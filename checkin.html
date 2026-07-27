@@ -112,6 +112,10 @@ function CheckIn() {
   }, [reserva]);
 
   const [procesandoOCR, setProcesandoOCR] = useState(false);
+const [acompanantes, setAcompanantes] = useState([]);
+const [mostrarFormAcompanante, setMostrarFormAcompanante] = useState(false);
+const [nuevoAcompanante, setNuevoAcompanante] = useState({ nombre: '', documento: '', numeroDocumento: '' });
+const [procesandoOCRAcompanante, setProcesandoOCRAcompanante] = useState(false);
 
 function procesarImagenOCR(file) {
   if (!file) return;
