@@ -143,11 +143,6 @@ function procesarImagenOCR(file, destino = 'principal') {
         setDocumento(matchPasaporte[0]);
       }
 
-      const posibleNombre = lineas.find(l => /^[A-ZÁÉÍÓÚÑ\s]{6,40}$/.test(l));
-      if (posibleNombre) {
-        setNombre(posibleNombre);
-      }
-
       setEscaneado(true);
     })
     .catch(() => {
