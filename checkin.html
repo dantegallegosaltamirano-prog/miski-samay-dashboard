@@ -185,9 +185,12 @@ function procesarImagenOCR(file, destino = 'principal') {
     return new Date(fechaStr + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
   }
 
- function completarCheckIn() {
+function completarCheckIn() {
   if (!domoSel) { alert("Selecciona un domo antes de continuar."); return; }
   if (!escaneado) { alert("Escanea el documento del huésped antes de continuar."); return; }
+  if (!pais) { alert("Selecciona el país del huésped antes de continuar."); return; }
+  if (!celular) { alert("Ingresa el celular del huésped antes de continuar."); return; }
+  if (!correo) { alert("Ingresa el correo del huésped antes de continuar."); return; }
   setEnviando(true);
   fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reserva.id}/completar-checkin`, {
     method: "POST",
@@ -197,7 +200,10 @@ function procesarImagenOCR(file, destino = 'principal') {
       tipoDocumento: tipoDocumento,
       numeroDocumento: numeroDocumento,
       domoCodigo: domoSel,
-      montoTotal: totales.totalUsd
+      montoTotal: totales.totalUsd,
+      pais: pais,
+      celular: celular,
+      correo: correo
     })
   })
     .then(r => r.json())
