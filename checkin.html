@@ -101,6 +101,16 @@ function CheckIn() {
   const [completado, setCompletado] = useState(false);
 
   const domos = ["D1", "D2", "D3", "D4", "D5", "D6"];
+  const [domosOcupados, setDomosOcupados] = useState([]);
+
+  React.useEffect(() => {
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/domos/estado-hoy`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setDomosOcupados(data.map(d => d.codigo));
+      })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     if (reserva) {
@@ -352,14 +362,21 @@ if (cargando) {
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Asignar domo</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
-            {domos.map((d) => (
-              <button key={d} onClick={() => setDomoSel(d)} style={{
-                padding: "10px 0", borderRadius: 8, cursor: "pointer",
-                border: domoSel === d ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                background: domoSel === d ? "rgba(201,162,75,0.15)" : "transparent",
-                color: domoSel === d ? T.gold : T.ivory,
-              }}>{d}</button>
-            ))}
+          {domos.map((d) => {
+              const ocupado = domosOcupados.includes(d);
+              return (
+                <button key={d} disabled={ocupado} onClick={() => !ocupado && setDomoSel(d)} style={{
+                  padding: "10px 0", borderRadius: 8, cursor: ocupado ? "not-allowed" : "pointer",
+                  border: domoSel === d ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                  background: ocupado ? "rgba(168,62,50,0.12)" : (domoSel === d ? "rgba(201,162,75,0.15)" : "transparent"),
+                  color: ocupado ? T.red : (domoSel === d ? T.gold : T.ivory),
+                  opacity: ocupado ? 0.7 : 1,
+                }}>
+                  {d}
+                  {ocupado && <div style={{ fontSize: 9, marginTop: 2 }}>Ocupado</div>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
