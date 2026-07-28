@@ -126,6 +126,11 @@ function DashboardRecepcion() {
     try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
     catch (err) { console.error(err); cargarTodo(); }
   };
+const entregarActividad = async (id) => {
+    setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "entregado" } : a)));
+    try { await apiPost(`/api/consumos/${id}/entregar`, { staffId: null }); }
+    catch (err) { console.error(err); cargarTodo(); }
+  };
  const hacerCheckin = (id) => {
     window.location.href = `checkin.html?id=${id}`;
   };
