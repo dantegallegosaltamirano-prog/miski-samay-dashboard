@@ -20,7 +20,7 @@ const { useState } = React;
 
 const T = {
   bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
-  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71"
 };
 
 const CATEGORIAS = [
@@ -35,8 +35,11 @@ function ConsumoRapido() {
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
   const [categoria, setCategoria] = useState(null);
-  const [descripcion, setDescripcion] = useState("");
-  const [monto, setMonto] = useState("");
+
+  const [productos, setProductos] = useState([]);
+  const [cargandoProductos, setCargandoProductos] = useState(false);
+  const [cantidades, setCantidades] = useState({});
+
   const [enviando, setEnviando] = useState(false);
   const [ultimoOk, setUltimoOk] = useState(null);
 
@@ -50,30 +53,73 @@ function ConsumoRapido() {
       .catch(() => setCargando(false));
   }, []);
 
-  function cargar() {
-    if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
-    if (!categoria) { alert("Selecciona una categoría."); return; }
-    if (!monto || Number(monto) <= 0) { alert("Ingresa un monto válido."); return; }
-    setEnviando(true);
-    setUltimoOk(null);
-    fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaSel.reserva_id}/consumos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoria, descripcion, monto: Number(monto) })
-    })
+  function elegirCategoria(valor) {
+    setCategoria(valor);
+    setCantidades({});
+    setCargandoProductos(true);
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/productos?categoria=${valor}`)
       .then(r => r.json())
       .then(data => {
-        setEnviando(false);
-        if (data.error) { alert("Error: " + data.error); return; }
-        setUltimoOk({ domo: reservaSel.codigo, nombre: reservaSel.nombre_completo, monto });
-        setCategoria(null);
-        setDescripcion("");
-        setMonto("");
+        setProductos(Array.isArray(data) ? data : []);
+        setCargandoProductos(false);
       })
       .catch(() => {
-        setEnviando(false);
-        alert("No se pudo conectar con el backend.");
+        setProductos([]);
+        setCargandoProductos(false);
       });
+  }
+
+  function cambiarCantidad(id, delta) {
+    setCantidades(prev => {
+      const actual = prev[id] || 0;
+      const nueva = Math.max(0, actual + delta);
+      return { ...prev, [id]: nueva };
+    });
+  }
+
+  const lineasCarrito = productos
+    .map(p => ({ ...p, cantidad: cantidades[p.id] || 0 }))
+    .filter(p => p.cantidad > 0);
+
+  const totalCarrito = lineasCarrito.reduce((acc, p) => acc + p.cantidad * Number(p.precio), 0);
+
+  async function cargar() {
+    if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
+    if (!categoria) { alert("Selecciona una categoría."); return; }
+    if (lineasCarrito.length === 0) { alert("Selecciona al menos un producto."); return; }
+
+    setEnviando(true);
+    setUltimoOk(null);
+
+    try {
+      for (const linea of lineasCarrito) {
+        const resp = await fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaSel.reserva_id}/consumos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            categoria,
+            descripcion: `${linea.cantidad} x ${linea.nombre}`,
+            monto: linea.cantidad * Number(linea.precio),
+          }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+      }
+
+      setUltimoOk({
+        domo: reservaSel.codigo,
+        nombre: reservaSel.nombre_completo,
+        items: lineasCarrito,
+        total: totalCarrito,
+      });
+      setCategoria(null);
+      setProductos([]);
+      setCantidades({});
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setEnviando(false);
+    }
   }
 
   const btnStyle = (activo) => ({
@@ -92,13 +138,19 @@ function ConsumoRapido() {
 
         {ultimoOk && (
           <div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
-            ✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo} · US$ {ultimoOk.monto}
+            ✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo}
+            <div style={{ color: T.ivoryMuted, marginTop: 4 }}>
+              {ultimoOk.items.map((it, i) => (
+                <div key={i}>{it.cantidad} x {it.nombre} — S/ {(it.cantidad * Number(it.precio)).toFixed(2)}</div>
+              ))}
+            </div>
+            <div style={{ marginTop: 4, fontWeight: 700 }}>Total: S/ {ultimoOk.total.toFixed(2)}</div>
           </div>
         )}
 
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
         {cargando ? (
-          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa…</div>
+          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
         ) : huespedes.length === 0 ? (
           <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
         ) : (
@@ -119,33 +171,68 @@ function ConsumoRapido() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
           {CATEGORIAS.map((c) => (
-            <button key={c.valor} onClick={() => setCategoria(c.valor)} style={btnStyle(categoria === c.valor)}>
+            <button key={c.valor} onClick={() => elegirCategoria(c.valor)} style={btnStyle(categoria === c.valor)}>
               {c.label}
             </button>
           ))}
         </div>
 
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Detalle</div>
-        <input
-          placeholder="Descripción (ej. 2 cervezas, servicio de lavado)"
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-          style={{ width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "10px 12px", fontSize: 13, marginBottom: 10 }}
-        />
-        <input
-          placeholder="Monto (US$)"
-          type="number"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-          style={{ width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "10px 12px", fontSize: 16, fontWeight: 600, marginBottom: 20 }}
-        />
+        {categoria && (
+          <React.Fragment>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos</div>
 
-        <button onClick={cargar} disabled={enviando} style={{
-          width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
-          padding: "14px 0", fontSize: 15, fontWeight: 600, cursor: "pointer",
-        }}>
-          {enviando ? "Cargando..." : "✓ Cargar consumo"}
-        </button>
+            {cargandoProductos ? (
+              <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando productos...</div>
+            ) : productos.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en esta categoría.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                {productos.map((p) => {
+                  const cant = cantidades[p.id] || 0;
+                  return (
+                    <div key={p.id} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 14px", borderRadius: 10,
+                      border: cant > 0 ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                      background: cant > 0 ? "rgba(201,162,75,0.1)" : T.card,
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.nombre}</div>
+                        <div style={{ fontSize: 12, color: T.ivoryMuted }}>S/ {Number(p.precio).toFixed(2)}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <button onClick={() => cambiarCantidad(p.id, -1)} disabled={cant === 0} style={{
+                          width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+                          background: T.card, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
+                          opacity: cant === 0 ? 0.4 : 1,
+                        }}>–</button>
+                        <div style={{ width: 20, textAlign: "center", fontSize: 14, fontWeight: 600 }}>{cant}</div>
+                        <button onClick={() => cambiarCantidad(p.id, 1)} style={{
+                          width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+                          background: T.card, color: T.ivory, fontSize: 16, cursor: "pointer",
+                        }}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {lineasCarrito.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, marginBottom: 16, padding: "0 4px" }}>
+                <span>Total</span>
+                <span>S/ {totalCarrito.toFixed(2)}</span>
+              </div>
+            )}
+
+            <button onClick={cargar} disabled={enviando} style={{
+              width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+              padding: "14px 0", fontSize: 15, fontWeight: 600, cursor: "pointer",
+            }}>
+              {enviando ? "Cargando..." : "✓ Cargar consumo"}
+            </button>
+          </React.Fragment>
+        )}
 
       </div>
     </div>
