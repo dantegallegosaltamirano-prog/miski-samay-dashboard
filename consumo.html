@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Cargo rápido</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71",
+};
+
+const CATEGORIAS = [
+  { label: "Restaurant", valor: "gastronomia" },
+  { label: "Bar", valor: "bebidas" },
+  { label: "Lavandería", valor: "lavanderia" },
+  { label: "Otros", valor: "otros" },
+];
+
+function ConsumoRapido() {
+  const [huespedes, setHuespedes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [reservaSel, setReservaSel] = useState(null);
+  const [categoria, setCategoria] = useState(null);
+  const [descripcion, setDescripcion] = useState("");
+  const [monto, setMonto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [ultimoOk, setUltimoOk] = useState(null);
+
+  React.useEffect(() => {
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/domos/estado-hoy`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setHuespedes(data);
+        setCargando(false);
+      })
+      .catch(() => setCargando(false));
+  }, []);
+
+  function cargar() {
+    if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
+    if (!categoria) { alert("Selecciona una categoría."); return; }
+    if (!monto || Number(monto) <= 0) { alert("Ingresa un monto válido."); return; }
+    setEnviando(true);
+    setUltimoOk(null);
+    fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaSel.reserva_id}/consumos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoria, descripcion, monto: Number(monto) })
+    })
+      .then(r => r.json())
+      .then(data => {
+        setEnviando(false);
+        if (data.error) { alert("Error: " + data.error); return; }
+        setUltimoOk({ domo: reservaSel.codigo, nombre: reservaSel.nombre_completo, monto });
+        setCategoria(null);
+        setDescripcion("");
+        setMonto("");
+      })
+      .catch(() => {
+        setEnviando(false);
+        alert("No se pudo conectar con el backend.");
+      });
+  }
+
+  const btnStyle = (activo) => ({
+    padding: "16px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
+    border: activo ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+    background: activo ? "rgba(201,162,75,0.15)" : T.card,
+    color: activo ? T.gold : T.ivory,
+  });
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto" }}>
+
+        <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Cargo rápido</div>
+
+        {ultimoOk && (
+          <div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
+            ✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo} · US$ {ultimoOk.monto}
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
+        {cargando ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa…</div>
+        ) : huespedes.length === 0 ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {huespedes.map((h) => (
+              <button key={h.reserva_id} onClick={() => setReservaSel(h)} style={{
+                textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                border: reservaSel?.reserva_id === h.reserva_id ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: reservaSel?.reserva_id === h.reserva_id ? "rgba(201,162,75,0.15)" : T.card,
+                color: T.ivory, fontSize: 13.5,
+              }}>
+                <strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+          {CATEGORIAS.map((c) => (
+            <button key={c.valor} onClick={() => setCategoria(c.valor)} style={btnStyle(categoria === c.valor)}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Detalle</div>
+        <input
+          placeholder="Descripción (ej. 2 cervezas, servicio de lavado)"
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          style={{ width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "10px 12px", fontSize: 13, marginBottom: 10 }}
+        />
+        <input
+          placeholder="Monto (US$)"
+          type="number"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+          style={{ width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "10px 12px", fontSize: 16, fontWeight: 600, marginBottom: 20 }}
+        />
+
+        <button onClick={cargar} disabled={enviando} style={{
+          width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+          padding: "14px 0", fontSize: 15, fontWeight: 600, cursor: "pointer",
+        }}>
+          {enviando ? "Cargando..." : "✓ Cargar consumo"}
+        </button>
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ConsumoRapido />);
+</script>
+</body>
+</html>
