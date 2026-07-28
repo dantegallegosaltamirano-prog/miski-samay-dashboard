@@ -24,21 +24,27 @@ const T = {
 };
 
 const CATEGORIAS = [
-  { label: "Restaurant", valor: "gastronomia" },
-  { label: "Bar", valor: "bebidas" },
-  { label: "Lavandería", valor: "lavanderia" },
-  { label: "Otros", valor: "otros" },
+  { label: "Restaurant", valor: "gastronomia", icono: "🍽️" },
+  { label: "Bar", valor: "bebidas", icono: "🍸" },
+  { label: "Lavandería", valor: "lavanderia", icono: "🧺" },
+  { label: "Otros", valor: "otros", icono: "📦" },
 ];
+
+function iconoCategoria(valor) {
+  const c = CATEGORIAS.find(c => c.valor === valor);
+  return c ? c.icono : "📦";
+}
 
 function ConsumoRapido() {
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
-  const [categoria, setCategoria] = useState(null);
 
-  const [productos, setProductos] = useState([]);
+  const [categoriaActiva, setCategoriaActiva] = useState(null);
+  const [cacheProductos, setCacheProductos] = useState({});
   const [cargandoProductos, setCargandoProductos] = useState(false);
-  const [cantidades, setCantidades] = useState({});
+
+  const [carrito, setCarrito] = useState({});
 
   const [enviando, setEnviando] = useState(false);
   const [ultimoOk, setUltimoOk] = useState(null);
@@ -54,38 +60,41 @@ function ConsumoRapido() {
   }, []);
 
   function elegirCategoria(valor) {
-    setCategoria(valor);
-    setCantidades({});
+    setCategoriaActiva(valor);
+    if (cacheProductos[valor]) return;
     setCargandoProductos(true);
     fetch(`https://miski-samay-backend-production.up.railway.app/api/productos?categoria=${valor}`)
       .then(r => r.json())
       .then(data => {
-        setProductos(Array.isArray(data) ? data : []);
+        setCacheProductos(prev => ({ ...prev, [valor]: Array.isArray(data) ? data : [] }));
         setCargandoProductos(false);
       })
       .catch(() => {
-        setProductos([]);
+        setCacheProductos(prev => ({ ...prev, [valor]: [] }));
         setCargandoProductos(false);
       });
   }
 
-  function cambiarCantidad(id, delta) {
-    setCantidades(prev => {
-      const actual = prev[id] || 0;
+  function cambiarCantidad(producto, delta) {
+    setCarrito(prev => {
+      const actual = prev[producto.id]?.cantidad || 0;
       const nueva = Math.max(0, actual + delta);
-      return { ...prev, [id]: nueva };
+      const copia = { ...prev };
+      if (nueva === 0) {
+        delete copia[producto.id];
+      } else {
+        copia[producto.id] = { producto, cantidad: nueva };
+      }
+      return copia;
     });
   }
 
-  const lineasCarrito = productos
-    .map(p => ({ ...p, cantidad: cantidades[p.id] || 0 }))
-    .filter(p => p.cantidad > 0);
-
-  const totalCarrito = lineasCarrito.reduce((acc, p) => acc + p.cantidad * Number(p.precio), 0);
+  const lineasCarrito = Object.values(carrito);
+  const totalCarrito = lineasCarrito.reduce((acc, l) => acc + l.cantidad * Number(l.producto.precio), 0);
+  const cantidadItems = lineasCarrito.reduce((acc, l) => acc + l.cantidad, 0);
 
   async function cargar() {
     if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
-    if (!categoria) { alert("Selecciona una categoría."); return; }
     if (lineasCarrito.length === 0) { alert("Selecciona al menos un producto."); return; }
 
     setEnviando(true);
@@ -97,9 +106,9 @@ function ConsumoRapido() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            categoria,
-            descripcion: `${linea.cantidad} x ${linea.nombre}`,
-            monto: linea.cantidad * Number(linea.precio),
+            categoria: linea.producto.categoria,
+            descripcion: `${linea.cantidad} x ${linea.producto.nombre}`,
+            monto: linea.cantidad * Number(linea.producto.precio),
           }),
         });
         const data = await resp.json();
@@ -112,9 +121,7 @@ function ConsumoRapido() {
         items: lineasCarrito,
         total: totalCarrito,
       });
-      setCategoria(null);
-      setProductos([]);
-      setCantidades({});
+      setCarrito({});
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -122,16 +129,11 @@ function ConsumoRapido() {
     }
   }
 
-  const btnStyle = (activo) => ({
-    padding: "16px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
-    border: activo ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-    background: activo ? "rgba(201,162,75,0.15)" : T.card,
-    color: activo ? T.gold : T.ivory,
-  });
+  const productosActivos = categoriaActiva ? (cacheProductos[categoriaActiva] || []) : [];
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 20px" }}>
-      <div style={{ maxWidth: 480, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 20px 120px" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
 
         <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
         <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Cargo rápido</div>
@@ -140,8 +142,8 @@ function ConsumoRapido() {
           <div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
             ✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo}
             <div style={{ color: T.ivoryMuted, marginTop: 4 }}>
-              {ultimoOk.items.map((it, i) => (
-                <div key={i}>{it.cantidad} x {it.nombre} — S/ {(it.cantidad * Number(it.precio)).toFixed(2)}</div>
+              {ultimoOk.items.map((l, i) => (
+                <div key={i}>{l.cantidad} x {l.producto.nombre} — S/ {(l.cantidad * Number(l.producto.precio)).toFixed(2)}</div>
               ))}
             </div>
             <div style={{ marginTop: 4, fontWeight: 700 }}>Total: S/ {ultimoOk.total.toFixed(2)}</div>
@@ -170,46 +172,58 @@ function ConsumoRapido() {
 
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-          {CATEGORIAS.map((c) => (
-            <button key={c.valor} onClick={() => elegirCategoria(c.valor)} style={btnStyle(categoria === c.valor)}>
-              {c.label}
-            </button>
-          ))}
+          {CATEGORIAS.map((c) => {
+            const activa = categoriaActiva === c.valor;
+            return (
+              <button key={c.valor} onClick={() => elegirCategoria(c.valor)} style={{
+                padding: "14px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
+                border: activa ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: activa ? "rgba(201,162,75,0.15)" : T.card,
+                color: activa ? T.gold : T.ivory,
+              }}>
+                {c.icono} {c.label}
+              </button>
+            );
+          })}
         </div>
 
-        {categoria && (
-          <React.Fragment>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos</div>
+        {categoriaActiva && (
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos — {CATEGORIAS.find(c => c.valor === categoriaActiva).label}</div>
 
             {cargandoProductos ? (
               <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando productos...</div>
-            ) : productos.length === 0 ? (
+            ) : productosActivos.length === 0 ? (
               <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en esta categoría.</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                {productos.map((p) => {
-                  const cant = cantidades[p.id] || 0;
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+                {productosActivos.map((p) => {
+                  const cant = carrito[p.id]?.cantidad || 0;
                   return (
                     <div key={p.id} style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "10px 14px", borderRadius: 10,
+                      display: "flex", flexDirection: "column", justifyContent: "space-between",
+                      padding: "12px", borderRadius: 12, minHeight: 150,
                       border: cant > 0 ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                      background: cant > 0 ? "rgba(201,162,75,0.1)" : T.card,
+                      background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
                     }}>
                       <div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.nombre}</div>
-                        <div style={{ fontSize: 12, color: T.ivoryMuted }}>S/ {Number(p.precio).toFixed(2)}</div>
+                        <div style={{ fontSize: 20, marginBottom: 4 }}>{iconoCategoria(p.categoria)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.25, marginBottom: 3 }}>{p.nombre}</div>
+                        {p.descripcion && (
+                          <div style={{ fontSize: 11, color: T.ivoryMuted, lineHeight: 1.3, marginBottom: 6 }}>{p.descripcion}</div>
+                        )}
+                        <div style={{ fontSize: 13, color: T.gold, fontWeight: 700 }}>S/ {Number(p.precio).toFixed(2)}</div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <button onClick={() => cambiarCantidad(p.id, -1)} disabled={cant === 0} style={{
-                          width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-                          background: T.card, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 10 }}>
+                        <button onClick={() => cambiarCantidad(p, -1)} disabled={cant === 0} style={{
+                          width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+                          background: T.bg, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
                           opacity: cant === 0 ? 0.4 : 1,
                         }}>–</button>
-                        <div style={{ width: 20, textAlign: "center", fontSize: 14, fontWeight: 600 }}>{cant}</div>
-                        <button onClick={() => cambiarCantidad(p.id, 1)} style={{
-                          width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-                          background: T.card, color: T.ivory, fontSize: 16, cursor: "pointer",
+                        <div style={{ width: 18, textAlign: "center", fontSize: 14, fontWeight: 700 }}>{cant}</div>
+                        <button onClick={() => cambiarCantidad(p, 1)} style={{
+                          width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+                          background: T.bg, color: T.ivory, fontSize: 16, cursor: "pointer",
                         }}>+</button>
                       </div>
                     </div>
@@ -217,24 +231,31 @@ function ConsumoRapido() {
                 })}
               </div>
             )}
+          </div>
+        )}
 
-            {lineasCarrito.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, marginBottom: 16, padding: "0 4px" }}>
-                <span>Total</span>
-                <span>S/ {totalCarrito.toFixed(2)}</span>
-              </div>
-            )}
+      </div>
 
+      {cantidadItems > 0 && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0,
+          background: T.card, borderTop: `1px solid ${T.cardBorder}`,
+          padding: "14px 20px", boxShadow: "0 -4px 16px rgba(0,0,0,0.4)",
+        }}>
+          <div style={{ maxWidth: 560, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 8 }}>
+              <span>{cantidadItems} producto{cantidadItems !== 1 ? "s" : ""} seleccionado{cantidadItems !== 1 ? "s" : ""}</span>
+              <span style={{ color: T.ivory, fontWeight: 700, fontSize: 15 }}>S/ {totalCarrito.toFixed(2)}</span>
+            </div>
             <button onClick={cargar} disabled={enviando} style={{
               width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
               padding: "14px 0", fontSize: 15, fontWeight: 600, cursor: "pointer",
             }}>
               {enviando ? "Cargando..." : "✓ Cargar consumo"}
             </button>
-          </React.Fragment>
-        )}
-
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
