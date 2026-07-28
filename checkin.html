@@ -228,8 +228,10 @@ function completarCheckIn() {
           <div style={{ fontSize: 13, color: T.ivoryMuted, marginBottom: 20 }}>{nombre} · Domo {domoSel}</div>
           <QRSimulado texto={codigoQR} />
           <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>{codigoQR}</div>
-          <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
+         <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Total estadía (US$)</span><span>US$ {fmt(totales.totalUsd)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Adelanto pagado (US$)</span><span>US$ {fmt(Number(adelantoPagado) || 0)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Saldo pendiente (US$)</span><span>US$ {fmt(totales.saldoPendienteUsd)}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 15 }}><span>Total a cobrar (S/)</span><span style={{ color: T.gold }}>S/ {fmt(totales.totalSoles)}</span></div>
           </div>
           <a href="index.html" style={{ display: "block", marginTop: 24, color: T.gold, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
