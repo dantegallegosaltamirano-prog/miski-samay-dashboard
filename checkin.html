@@ -331,6 +331,14 @@ if (cargando) {
             </tbody>
           </table>
 
+       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 10 }}>
+            <span style={{ ...labelMuted, whiteSpace: "nowrap" }}>Adelanto pagado (US$)</span>
+            <input style={{ ...inputStyle, maxWidth: 120 }} placeholder="0.00" value={adelantoPagado} onChange={(e) => setAdelantoPagado(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 12.5, color: T.ivoryMuted }}>
+            <span>Saldo pendiente (US$)</span>
+            <span>US$ {fmt(totales.saldoPendienteUsd)}</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(201,162,75,0.12)", borderRadius: 8, padding: "10px 12px", marginTop: 10 }}>
             <span style={{ fontSize: 13, color: T.gold }}>Total a cobrar (S/) · TC {tipoCambio || "0"}</span>
             <span style={{ fontSize: 17, fontWeight: 600, color: T.gold }}>S/ {fmt(totales.totalSoles)}</span>
