@@ -113,6 +113,9 @@ function CheckIn() {
   }, [reserva]);
 
   const [procesandoOCR, setProcesandoOCR] = useState(false);
+const [pais, setPais] = useState("");
+const [celular, setCelular] = useState("");
+const [correo, setCorreo] = useState("");
 const [acompanantes, setAcompanantes] = useState([]);
 const [mostrarFormAcompanante, setMostrarFormAcompanante] = useState(false);
 const [nuevoAcompanante, setNuevoAcompanante] = useState({ nombre: '', documento: '', numeroDocumento: '' });
