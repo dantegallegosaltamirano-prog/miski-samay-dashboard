@@ -178,8 +178,8 @@ function procesarImagenOCR(file, destino = 'principal') {
     const impuesto = noches.reduce((s, n) => s + (Number(n.impuesto) || 0), 0);
     const servicio = noches.reduce((s, n) => s + (Number(n.servicio) || 0), 0);
     const totalUsd = base + impuesto + servicio;
-    const totalSoles = totalUsd * (Number(tipoCambio) || 0);
     const saldoPendienteUsd = totalUsd - (Number(adelantoPagado) || 0);
+    const totalSoles = saldoPendienteUsd * (Number(tipoCambio) || 0);
     return { base, impuesto, servicio, totalUsd, totalSoles, saldoPendienteUsd };
   }, [noches, tipoCambio, adelantoPagado]);
 
