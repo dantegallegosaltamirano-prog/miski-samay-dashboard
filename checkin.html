@@ -271,7 +271,13 @@ if (cargando) {
               <option value="Pasaporte">Pasaporte</option>
               <option value="CE">Carné de Extranjería</option>
             </select>
-            <input style={inputStyle} placeholder="N° de documento" value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
+            <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="N° de documento" value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
+            <select style={{ ...inputStyle, marginBottom: 8 }} value={pais} onChange={(e) => setPais(e.target.value)}>
+              <option value="">Selecciona país</option>
+              {PAISES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Celular" value={celular} onChange={(e) => setCelular(e.target.value)} />
+            <input style={inputStyle} placeholder="Correo electrónico" value={correo} onChange={(e) => setCorreo(e.target.value)} />
           </div>
         </div>
 
