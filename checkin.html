@@ -197,10 +197,11 @@ function completarCheckIn() {
       tipoDocumento: tipoDocumento,
       numeroDocumento: numeroDocumento,
       domoCodigo: domoSel,
-      montoTotal: totales.totalUsd,
+     montoTotal: totales.totalUsd,
       pais: pais,
       celular: celular,
-      correo: correo
+      correo: correo,
+      adelantoPagado: adelantoPagado || 0
     })
   })
     .then(r => r.json())
