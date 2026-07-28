@@ -305,9 +305,12 @@ const entregarActividad = async (id) => {
                           <span style={{ background: estadoColor(a.estado), width: 6, height: 6, borderRadius: "50%", display: "inline-block" }}></span>
                           {ETIQUETA_ESTADO[a.estado] || a.estado}
                         </span>
-                        {a.estado === "pendiente" && (
-                          <button onClick={() => tomarActividad(a.id)} style={{ color: T.gold, border: "1px solid rgba(201,162,75,0.35)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>TOMAR</button>
-                        )}
+                       {a.estado === "pendiente" && (
+                  <button onClick={() => tomarActividad(a.id)} style={{ color: T.gold, border: "1px solid rgba(201,162,75,0.35)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>TOMAR</button>
+                )}
+                {a.estado === "en_preparacion" && (
+                  <button onClick={() => entregarActividad(a.id)} style={{ color: T.green, border: "1px solid rgba(107,143,113,0.4)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>ENTREGADO</button>
+                )}
                       </div>
                     </div>
                   ))}
