@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Actividad en Vivo</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const REFRESH_MS = 15000;
+
+const ICONO_POR_CATEGORIA = {
+  gastronomia: "🍽️", bebidas: "🍸", experiencia_incluida: "✦",
+  experiencia_premium: "✦", transporte: "🚐", lavanderia: "🧺",
+};
+const ETIQUETA_ESTADO = { pendiente: "Pendiente", en_preparacion: "En preparación", entregado: "Entregado" };
+
+function estadoColor(estado) {
+  if (estado === "pendiente") return T.red;
+  if (estado === "en_preparacion") return T.amber;
+  return T.green;
+}
+
+function formatearHora(valor) {
+  if (!valor) return "Por confirmar";
+  const soloHora = String(valor).match(/\d{2}:\d{2}/);
+  if (soloHora) return soloHora[0];
+  try { return new Date(valor).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return "Por confirmar"; }
+}
+
+async function apiGet(path) {
+  const r = await fetch(`${API_BASE_URL}${path}`);
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  return r.json();
+}
+
+function ActividadEnVivo() {
+  const [actividad, setActividad] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+
+  const cargarTodo = useCallback(async () => {
+    try {
+      const data = await apiGet("/api/consumos/pendientes");
+      setActividad(Array.isArray(data) ? data : []);
+      setUltimaActualizacion(new Date());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarTodo();
+    const intervalo = setInterval(cargarTodo, REFRESH_MS);
+    return () => clearInterval(intervalo);
+  }, [cargarTodo]);
+
+  const tomarActividad = async (id) => {
+    setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "en_preparacion" } : a)));
+    try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
+    catch (err) { console.error(err); cargarTodo(); }
+  };
+  const entregarActividad = async (id) => {
+    setActividad((prev) => prev.filter((a) => a.id !== id));
+    try { await apiPost(`/api/consumos/${id}/entregar`, { staffId: null }); }
+    catch (err) { console.error(err); cargarTodo(); }
+  };
+
+  const mapa = {};
+  actividad.forEach((a) => {
+    const clave = a.domo || "sin-domo";
+    if (!mapa[clave]) mapa[clave] = { domo: a.domo, huesped: a.huesped, items: [] };
+    mapa[clave].items.push(a);
+  });
+  const grupos = Object.values(mapa).sort((g1, g2) => {
+    const t1 = g1.items[0]?.hora_solicitada || "";
+    const t2 = g2.items[0]?.hora_solicitada || "";
+    return t1.localeCompare(t2);
+  });
+
+  const pendientesCount = actividad.filter((a) => a.estado === "pendiente").length;
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 28px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>Actividad en Vivo</div>
+          <div style={{ color: T.ivoryMuted, fontSize: 12.5, marginTop: 2 }}>
+            {ultimaActualizacion ? `Actualizado hace instantes · se refresca cada ${REFRESH_MS / 1000}s` : "Cargando..."}
+          </div>
+        </div>
+        <div style={{
+          background: pendientesCount > 0 ? "rgba(168,62,50,0.15)" : "rgba(107,143,113,0.15)",
+          border: `1px solid ${pendientesCount > 0 ? T.red : T.green}`,
+          color: pendientesCount > 0 ? T.red : T.green,
+          borderRadius: 12, padding: "10px 18px", fontSize: 15, fontWeight: 700,
+        }}>
+          {pendientesCount} pendiente{pendientesCount !== 1 ? "s" : ""}
+        </div>
+      </div>
+
+      {cargando ? (
+        <div style={{ color: T.ivoryMuted, fontSize: 14 }}>Cargando actividad...</div>
+      ) : grupos.length === 0 ? (
+        <div style={{ color: T.ivoryMuted, fontSize: 15, textAlign: "center", padding: "60px 0", border: `1px dashed ${T.cardBorder}`, borderRadius: 16 }}>
+          No hay pedidos ni actividades pendientes.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          {grupos.map((g) => (
+            <div key={g.domo || "sin-domo"} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 18 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${T.cardBorder}` }}>
+                {g.domo ? `Domo ${g.domo}` : "Sin domo"}{g.huesped ? ` — ${g.huesped}` : ""}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {g.items.map((a) => (
+                  <div key={a.id} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 12px", background: T.bg, borderRadius: 10, border: `1px solid ${T.cardBorder}`,
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
+                        <span>{ICONO_POR_CATEGORIA[a.categoria] || "📦"}</span>
+                        <span>{a.descripcion}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <span style={{ color: estadoColor(a.estado), fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ background: estadoColor(a.estado), width: 6, height: 6, borderRadius: "50%", display: "inline-block" }}></span>
+                          {ETIQUETA_ESTADO[a.estado] || a.estado}
+                        </span>
+                        <span style={{ color: T.ivoryMuted, fontSize: 11.5 }}>· {formatearHora(a.hora_solicitada)}</span>
+                      </div>
+                    </div>
+                    {a.estado === "pendiente" && (
+                      <button onClick={() => tomarActividad(a.id)} style={{
+                        color: T.gold, border: `1px solid rgba(201,162,75,0.4)`, background: "transparent",
+                        fontSize: 12.5, padding: "8px 14px", borderRadius: 8, cursor: "pointer", flexShrink: 0, marginLeft: 10, fontWeight: 600,
+                      }}>TOMAR</button>
+                    )}
+                    {a.estado === "en_preparacion" && (
+                      <button onClick={() => entregarActividad(a.id)} style={{
+                        color: T.green, border: `1px solid rgba(107,143,113,0.45)`, background: "transparent",
+                        fontSize: 12.5, padding: "8px 14px", borderRadius: 8, cursor: "pointer", flexShrink: 0, marginLeft: 10, fontWeight: 600,
+                      }}>ENTREGADO</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ActividadEnVivo />);
+</script>
+</body>
+</html>
