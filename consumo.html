@@ -35,10 +35,13 @@ function iconoCategoria(valor) {
   return c ? c.icono : "📦";
 }
 
+const idBloqueado = new URLSearchParams(window.location.search).get("id");
+
 function ConsumoRapido() {
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
+  const [noEncontrado, setNoEncontrado] = useState(false);
 
   const [categoriaActiva, setCategoriaActiva] = useState(null);
   const [cacheProductos, setCacheProductos] = useState({});
@@ -53,7 +56,13 @@ function ConsumoRapido() {
     fetch(`https://miski-samay-backend-production.up.railway.app/api/domos/estado-hoy`)
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data)) setHuespedes(data);
+        const lista = Array.isArray(data) ? data : [];
+        setHuespedes(lista);
+        if (idBloqueado) {
+          const encontrado = lista.find(h => h.reserva_id === idBloqueado);
+          if (encontrado) setReservaSel(encontrado);
+          else setNoEncontrado(true);
+        }
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -150,24 +159,43 @@ function ConsumoRapido() {
           </div>
         )}
 
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
-        {cargando ? (
-          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
-        ) : huespedes.length === 0 ? (
-          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-            {huespedes.map((h) => (
-              <button key={h.reserva_id} onClick={() => setReservaSel(h)} style={{
-                textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                border: reservaSel?.reserva_id === h.reserva_id ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                background: reservaSel?.reserva_id === h.reserva_id ? "rgba(201,162,75,0.15)" : T.card,
-                color: T.ivory, fontSize: 13.5,
-              }}>
-                <strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}
-              </button>
-            ))}
+        {idBloqueado ? (
+          <div style={{ marginBottom: 20 }}>
+            {cargando ? (
+              <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando huésped...</div>
+            ) : noEncontrado ? (
+              <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+                No se encontró esta reserva entre los huéspedes en casa hoy. Verifica el link o usa el panel para elegir manualmente.
+              </div>
+            ) : reservaSel && (
+              <div style={{ background: "rgba(201,162,75,0.10)", border: `2px solid ${T.gold}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: T.ivoryMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Pedido para</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{reservaSel.codigo} — {reservaSel.nombre_completo || "Por confirmar"}</div>
+              </div>
+            )}
           </div>
+        ) : (
+          <React.Fragment>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
+            {cargando ? (
+              <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
+            ) : huespedes.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                {huespedes.map((h) => (
+                  <button key={h.reserva_id} onClick={() => setReservaSel(h)} style={{
+                    textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                    border: reservaSel?.reserva_id === h.reserva_id ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                    background: reservaSel?.reserva_id === h.reserva_id ? "rgba(201,162,75,0.15)" : T.card,
+                    color: T.ivory, fontSize: 13.5,
+                  }}>
+                    <strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </React.Fragment>
         )}
 
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
