@@ -285,37 +285,57 @@ const entregarActividad = async (id) => {
                 </div>
               </section>
 
-              <section>
-                <ColumnHeader title="Actividad en vivo" count={actividad.filter((a) => a.estado === "pendiente").length} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {actividad.length === 0 && <EmptyState texto="No hay pedidos ni actividades pendientes." />}
-                  {actividad.map((a) => (
-                    <div key={a.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
-                      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                        <div style={{ background: "rgba(201,162,75,0.10)", width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", flexShrink: 0 }}>
-                          {ICONO_POR_CATEGORIA[a.categoria] || "◈"}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13 }}>{a.descripcion} {a.domo ? `— Domo ${a.domo}` : ""}</div>
-                          <div style={{ color: T.ivoryMuted, fontSize: 11.5, marginTop: 2 }}>🕐 {formatearHora(a.hora_solicitada)}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ color: estadoColor(a.estado), fontSize: 11, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ background: estadoColor(a.estado), width: 6, height: 6, borderRadius: "50%", display: "inline-block" }}></span>
-                          {ETIQUETA_ESTADO[a.estado] || a.estado}
-                        </span>
-                       {a.estado === "pendiente" && (
-                  <button onClick={() => tomarActividad(a.id)} style={{ color: T.gold, border: "1px solid rgba(201,162,75,0.35)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>TOMAR</button>
+             <section>
+  <ColumnHeader title="Actividad en vivo" count={actividad.filter((a) => a.estado === "pendiente").length} />
+  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    {actividad.length === 0 && <EmptyState texto="No hay pedidos ni actividades pendientes." />}
+    {(() => {
+      const mapa = {};
+      actividad.forEach((a) => {
+        const clave = a.domo || "sin-domo";
+        if (!mapa[clave]) mapa[clave] = { domo: a.domo, huesped: a.huesped, items: [] };
+        mapa[clave].items.push(a);
+      });
+      const gruposActividad = Object.values(mapa).sort((g1, g2) => {
+        const t1 = g1.items[0]?.hora_solicitada || "";
+        const t2 = g2.items[0]?.hora_solicitada || "";
+        return t1.localeCompare(t2);
+      });
+      return gruposActividad.map((g) => (
+        <div key={g.domo || "sin-domo"} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+            {g.domo ? `Domo ${g.domo}` : "Sin domo"}{g.huesped ? ` — ${g.huesped}` : ""}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.items.map((a) => (
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: T.bg, borderRadius: 10, border: `1px solid ${T.cardBorder}` }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>{ICONO_POR_CATEGORIA[a.categoria] || "📦"}</span>
+                    <span>{a.descripcion}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                    <span style={{ color: estadoColor(a.estado), fontSize: 10.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ background: estadoColor(a.estado), width: 5, height: 5, borderRadius: "50%", display: "inline-block" }}></span>
+                      {ETIQUETA_ESTADO[a.estado] || a.estado}
+                    </span>
+                    <span style={{ color: T.ivoryMuted, fontSize: 10.5 }}>· {formatearHora(a.hora_solicitada)}</span>
+                  </div>
+                </div>
+                {a.estado === "pendiente" && (
+                  <button onClick={() => tomarActividad(a.id)} style={{ color: T.gold, border: "1px solid rgba(201,162,75,0.35)", background: "transparent", fontSize: 10.5, padding: "5px 10px", borderRadius: 8, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}>TOMAR</button>
                 )}
                 {a.estado === "en_preparacion" && (
-                  <button onClick={() => entregarActividad(a.id)} style={{ color: T.green, border: "1px solid rgba(107,143,113,0.4)", background: "transparent", fontSize: 11, padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}>ENTREGADO</button>
+                  <button onClick={() => entregarActividad(a.id)} style={{ color: T.green, border: "1px solid rgba(107,143,113,0.4)", background: "transparent", fontSize: 10.5, padding: "5px 10px", borderRadius: 8, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}>ENTREGADO</button>
                 )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+              </div>
+            ))}
+          </div>
+        </div>
+      ));
+    })()}
+  </div>
+</section>
              <section>
              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
                   <span>🌙</span>
