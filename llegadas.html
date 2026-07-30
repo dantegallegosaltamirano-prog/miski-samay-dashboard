@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Check-in</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  green: "#6B8F71", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const REFRESH_MS = 30000;
+
+function iniciales(nombreCompleto = "") {
+  const partes = nombreCompleto.trim().split(/\s+/);
+  if (!partes[0]) return "?";
+  return (partes[0][0] + (partes[1]?.[0] || "")).toUpperCase();
+}
+
+function formatearHora(valor) {
+  if (!valor) return "Por confirmar";
+  const soloHora = String(valor).match(/\d{2}:\d{2}/);
+  if (soloHora) return soloHora[0];
+  try { return new Date(valor).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return "Por confirmar"; }
+}
+
+async function apiGet(path) {
+  const r = await fetch(`${API_BASE_URL}${path}`);
+  return r.json();
+}
+
+function hacerCheckin(id) {
+  window.location.href = `checkin.html?id=${id}`;
+}
+
+function PantallaCheckin() {
+  const [llegadas, setLlegadas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  const cargarTodo = useCallback(async () => {
+    try {
+      const data = await apiGet("/api/reservas/llegadas-hoy");
+      setLlegadas(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarTodo();
+    const intervalo = setInterval(cargarTodo, REFRESH_MS);
+    return () => clearInterval(intervalo);
+  }, [cargarTodo]);
+
+  const pendientes = llegadas.filter((l) => l.estado !== "check_in").length;
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 28px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>Check-in</div>
+          <div style={{ color: T.ivoryMuted, fontSize: 12.5, marginTop: 2 }}>Llegadas de hoy</div>
+        </div>
+        <div style={{
+          background: pendientes > 0 ? "rgba(184,135,59,0.15)" : "rgba(107,143,113,0.15)",
+          border: `1px solid ${pendientes > 0 ? T.amber : T.green}`,
+          color: pendientes > 0 ? T.amber : T.green,
+          borderRadius: 12, padding: "10px 18px", fontSize: 15, fontWeight: 700,
+        }}>
+          {pendientes} por hacer check-in
+        </div>
+      </div>
+
+      {cargando ? (
+        <div style={{ color: T.ivoryMuted, fontSize: 14 }}>Cargando llegadas...</div>
+      ) : llegadas.length === 0 ? (
+        <div style={{ color: T.ivoryMuted, fontSize: 15, textAlign: "center", padding: "60px 0", border: `1px dashed ${T.cardBorder}`, borderRadius: 16 }}>
+          Sin llegadas registradas para hoy.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {llegadas.map((l) => {
+            const yaHecho = l.estado === "check_in";
+            return (
+              <div key={l.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div style={{
+                    background: "rgba(201,162,75,0.14)", color: T.gold, border: "1px solid rgba(201,162,75,0.3)",
+                    width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center",
+                    fontSize: 13, fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {iniciales(l.nombre_completo)}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.nombre_completo}</div>
+                    <div style={{ color: T.ivoryMuted, fontSize: 12 }}>{l.canal_origen} · {l.booking_id_externo}</div>
+                  </div>
+                </div>
+
+                {!l.datos_completos && (
+                  <span style={{ background: "rgba(184,135,59,0.14)", color: T.amber, border: "1px solid rgba(184,135,59,0.3)", fontSize: 10.5, padding: "4px 8px", borderRadius: 999, display: "inline-block", marginBottom: 10 }}>
+                    Requiere OCR
+                  </span>
+                )}
+
+                <div style={{ color: T.ivoryMuted, display: "flex", gap: 16, fontSize: 12.5, marginBottom: 14 }}>
+                  <span>🕐 {formatearHora(l.hora_llegada_estimada)}</span>
+                  <span>{l.adultos} adultos{l.ninos > 0 ? ` · ${l.ninos} niños` : ""}</span>
+                </div>
+
+                <button onClick={() => hacerCheckin(l.id)} disabled={yaHecho} style={{
+                  width: "100%", padding: "10px 0", borderRadius: 10, fontSize: 13.5, fontWeight: 600, letterSpacing: 0.4,
+                  cursor: yaHecho ? "default" : "pointer",
+                  background: yaHecho ? "transparent" : T.gold,
+                  color: yaHecho ? T.ivoryMuted : T.bg,
+                  border: yaHecho ? `1px solid ${T.cardBorder}` : "none",
+                }}>
+                  {yaHecho ? "Check-in iniciado" : "CHECK-IN"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PantallaCheckin />);
+</script>
+</body>
+</html>
