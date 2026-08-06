@@ -10,6 +10,7 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
 </style>
 </head>
 <body>
@@ -26,11 +27,21 @@ const T = {
 
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 
+// Métodos disponibles para una línea completa (incluye "mixto")
 const METODOS = [
   { valor: "efectivo", label: "Efectivo" },
   { valor: "pos", label: "Tarjeta / POS" },
   { valor: "transferencia", label: "Transferencia" },
+  { valor: "yape", label: "Yape" },
   { valor: "mixto", label: "Mixto" },
+];
+
+// Métodos válidos dentro de un desglose "mixto" (no se puede anidar "mixto")
+const METODOS_MIXTO = [
+  { valor: "efectivo", label: "Efectivo" },
+  { valor: "pos", label: "Tarjeta / POS" },
+  { valor: "transferencia", label: "Transferencia" },
+  { valor: "yape", label: "Yape" },
 ];
 
 const idBloqueado = new URLSearchParams(window.location.search).get("id");
@@ -40,6 +51,9 @@ function fmt(n) {
 }
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+function nuevaParteMixto() {
+  return { metodo: "efectivo", monto: "" };
 }
 
 function BotonMoneda({ moneda, onChange }) {
@@ -76,6 +90,62 @@ function SelectorMetodo({ valor, onChange }) {
   );
 }
 
+function DesgloseMixto({ partes, onChange, total, simbolo }) {
+  const suma = partes.reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
+  const cuadra = Math.abs(suma - total) < 0.01;
+
+  function actualizarParte(i, campo, valor) {
+    const nuevas = partes.map((p, idx) => idx === i ? { ...p, [campo]: valor } : p);
+    onChange(nuevas);
+  }
+  function agregarParte() {
+    if (partes.length < 3) onChange([...partes, nuevaParteMixto()]);
+  }
+  function quitarParte(i) {
+    if (partes.length > 2) onChange(partes.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div style={{ marginTop: 10, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 8 }}>Desglose del pago mixto (2-3 partes):</div>
+      {partes.map((p, i) => (
+        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <select value={p.metodo} onChange={(e) => actualizarParte(i, "metodo", e.target.value)} style={{
+            background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 6, color: T.ivory,
+            fontSize: 12.5, padding: "7px 8px", flex: "0 0 140px",
+          }}>
+            {METODOS_MIXTO.map((m) => <option key={m.valor} value={m.valor}>{m.label}</option>)}
+          </select>
+          <div style={{ display: "flex", alignItems: "center", flex: 1, gap: 4 }}>
+            <span style={{ fontSize: 12, color: T.ivoryMuted }}>{simbolo}</span>
+            <input type="number" min="0" step="0.01" value={p.monto}
+              onChange={(e) => actualizarParte(i, "monto", e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 6,
+                padding: "7px 8px", color: T.ivory, fontSize: 13,
+              }} />
+          </div>
+          {partes.length > 2 && (
+            <button onClick={() => quitarParte(i)} style={{
+              background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: 15, padding: "0 4px",
+            }}>✕</button>
+          )}
+        </div>
+      ))}
+      {partes.length < 3 && (
+        <button onClick={agregarParte} style={{
+          background: "none", border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 6,
+          padding: "5px 10px", fontSize: 11.5, cursor: "pointer", marginBottom: 4,
+        }}>+ Agregar otra parte</button>
+      )}
+      <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: cuadra ? T.green : T.red }}>
+        Suma: {simbolo} {fmt(suma)} / {simbolo} {fmt(total)} {cuadra ? "✓" : "— no coincide con el total"}
+      </div>
+    </div>
+  );
+}
+
 function CheckoutPantalla() {
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -94,6 +164,14 @@ function CheckoutPantalla() {
   const [monedaConsumo, setMonedaConsumo] = useState("PEN");
   const [metodoHospedaje, setMetodoHospedaje] = useState("efectivo");
   const [metodoConsumo, setMetodoConsumo] = useState("efectivo");
+
+  // Tipos de cambio editables por línea (solo se usan/mostrarán si la
+  // moneda de cobro elegida no coincide con la moneda nativa del concepto).
+  const [tipoCambioHospedaje, setTipoCambioHospedaje] = useState(0); // usado si monedaHospedaje === "PEN" (venta, "X")
+  const [tipoCambioConsumo, setTipoCambioConsumo] = useState(0);     // usado si monedaConsumo === "USD" (compra, "Z")
+
+  const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+  const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
 
   const [enviando, setEnviando] = useState(false);
   const [resultadoOk, setResultadoOk] = useState(null);
@@ -128,42 +206,76 @@ function CheckoutPantalla() {
         const adelanto = Number(data.adelantoPagado) || 0;
         setAdelantoMonto(adelanto);
         setAplicarAdelantoA(adelanto > 0 ? "hospedaje" : "ninguno");
+        const tc = Number(data.tipoCambio) || 0;
+        setTipoCambioHospedaje(tc);
+        setTipoCambioConsumo(tc);
         setCargandoFolio(false);
       })
       .catch(() => { setErrorFolio("No se pudo cargar el folio"); setCargandoFolio(false); });
   }, [reservaSel]);
 
-  const tipoCambio = folio?.tipoCambio || null;
+  const tipoCambioRef = folio?.tipoCambio || null; // solo referencial, para desglose por categoría y adelanto
   const hospedajeUsd = folio ? Number(folio.montoAlojamientoUsd) || 0 : 0;
-  const hospedajeSoles = tipoCambio ? hospedajeUsd * tipoCambio : 0;
+  const hospedajeSoles = tipoCambioRef ? hospedajeUsd * tipoCambioRef : 0;
   const consumoSoles = folio ? Number(folio.totalConsumosSoles) || 0 : 0;
-  const consumoUsd = tipoCambio ? consumoSoles / tipoCambio : 0;
+  const consumoUsd = tipoCambioRef ? consumoSoles / tipoCambioRef : 0;
 
   // El adelanto siempre viene y se edita en USD.
   const adelantoUsd = adelantoMonto;
-  const adelantoSoles = tipoCambio ? adelantoUsd * tipoCambio : 0;
+  const adelantoSoles = tipoCambioRef ? adelantoUsd * tipoCambioRef : 0;
 
   const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsd) : hospedajeUsd;
   const saldoConsumoSoles = aplicarAdelantoA === "consumo" ? Math.max(0, consumoSoles - adelantoSoles) : consumoSoles;
-  const saldoHospedajeSoles = tipoCambio ? saldoHospedajeUsd * tipoCambio : 0;
-  const saldoConsumoUsd = tipoCambio ? saldoConsumoSoles / tipoCambio : 0;
 
-  const montoCobroHospedaje = monedaHospedaje === "USD" ? saldoHospedajeUsd : saldoHospedajeSoles;
-  const montoCobroConsumo = monedaConsumo === "PEN" ? saldoConsumoSoles : saldoConsumoUsd;
+  // Monto final a cobrar por línea, según la moneda elegida.
+  // Si coincide con la moneda nativa del concepto, no requiere tipo de cambio.
+  const usaTipoCambioHospedaje = monedaHospedaje === "PEN"; // hospedaje nativo = USD
+  const usaTipoCambioConsumo = monedaConsumo === "USD";     // consumo nativo = PEN
+
+  const montoCobroHospedaje = usaTipoCambioHospedaje
+    ? saldoHospedajeUsd * (Number(tipoCambioHospedaje) || 0)
+    : saldoHospedajeUsd;
+  const montoCobroConsumo = usaTipoCambioConsumo
+    ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSoles / Number(tipoCambioConsumo) : 0)
+    : saldoConsumoSoles;
 
   const hayHospedajeQueCobrar = montoCobroHospedaje > 0.009;
   const hayConsumoQueCobrar = montoCobroConsumo > 0.009;
 
+  const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const sumaMixtoConsumo = mixtoConsumo.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const mixtoHospedajeOk = metodoHospedaje !== "mixto" || !hayHospedajeQueCobrar || Math.abs(sumaMixtoHospedaje - round2(montoCobroHospedaje)) < 0.01;
+  const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
+
+  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
+  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
+
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+
   async function confirmarCheckout() {
     const pagos = [];
     if (hayHospedajeQueCobrar) {
-      pagos.push({ concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje });
+      const linea = { concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje };
+      if (usaTipoCambioHospedaje) linea.tipoCambio = Number(tipoCambioHospedaje);
+      if (metodoHospedaje === "mixto") {
+        linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      }
+      pagos.push(linea);
     }
     if (hayConsumoQueCobrar) {
-      pagos.push({ concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo });
+      const linea = { concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo };
+      if (usaTipoCambioConsumo) linea.tipoCambio = Number(tipoCambioConsumo);
+      if (metodoConsumo === "mixto") {
+        linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      }
+      pagos.push(linea);
     }
     if (pagos.length === 0) {
       alert("No hay saldo pendiente por cobrar (el adelanto cubre todo). Contacta soporte si esto no es correcto.");
+      return;
+    }
+    if (!puedeEnviar) {
+      alert("Revisa el desglose de pago mixto o el tipo de cambio antes de continuar — hay algo que no cuadra.");
       return;
     }
 
@@ -194,9 +306,18 @@ function CheckoutPantalla() {
           <div style={{ color: T.ivoryMuted, fontSize: 14, marginBottom: 20 }}>{resultadoOk.codigo} — {resultadoOk.nombre}</div>
           <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 18, textAlign: "left", marginBottom: 24 }}>
             {resultadoOk.pagos.map((p, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "6px 0", borderBottom: i < resultadoOk.pagos.length - 1 ? `1px solid ${T.cardBorder}` : "none" }}>
-                <span style={{ textTransform: "capitalize" }}>{p.concepto} · {METODOS.find(m => m.valor === p.metodoPago)?.label}</span>
-                <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+              <div key={i} style={{ padding: "6px 0", borderBottom: i < resultadoOk.pagos.length - 1 ? `1px solid ${T.cardBorder}` : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                  <span style={{ textTransform: "capitalize" }}>{p.concepto} · {METODOS.find(m => m.valor === p.metodoPago)?.label}</span>
+                  <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+                </div>
+                {p.detalleMixto && (
+                  <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 4 }}>
+                    {p.detalleMixto.map((d, j) => (
+                      <div key={j}>· {METODOS_MIXTO.find(m => m.valor === d.metodo)?.label}: {p.moneda === "USD" ? "US$" : "S/."} {fmt(d.monto)}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -266,7 +387,7 @@ function CheckoutPantalla() {
           <React.Fragment>
 
             <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 18 }}>
-              Tipo de cambio de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambio)}</strong> por US$ 1
+              Tipo de cambio referencial de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambioRef)}</strong> por US$ 1
             </div>
 
             {/* HOSPEDAJE */}
@@ -285,11 +406,30 @@ function CheckoutPantalla() {
                 <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
                 <BotonMoneda moneda={monedaHospedaje} onChange={setMonedaHospedaje} />
               </div>
+
+              {usaTipoCambioHospedaje && hayHospedajeQueCobrar && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (venta) — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
+                    onChange={(e) => setTipoCambioHospedaje(e.target.value)}
+                    style={{
+                      width: 90, background: T.bg, border: `1px solid ${tipoCambioHospedajeOk ? T.cardBorder : T.red}`,
+                      borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13,
+                    }} />
+                </div>
+              )}
+
               <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
                 {monedaHospedaje === "USD" ? "US$" : "S/."} {fmt(montoCobroHospedaje)}
               </div>
               {hayHospedajeQueCobrar && (
-                <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
+                <React.Fragment>
+                  <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
+                  {metodoHospedaje === "mixto" && (
+                    <DesgloseMixto partes={mixtoHospedaje} onChange={setMixtoHospedaje}
+                      total={round2(montoCobroHospedaje)} simbolo={monedaHospedaje === "USD" ? "US$" : "S/."} />
+                  )}
+                </React.Fragment>
               )}
               {!hayHospedajeQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
@@ -317,11 +457,30 @@ function CheckoutPantalla() {
                 <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
                 <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
               </div>
+
+              {usaTipoCambioConsumo && hayConsumoQueCobrar && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioConsumo}
+                    onChange={(e) => setTipoCambioConsumo(e.target.value)}
+                    style={{
+                      width: 90, background: T.bg, border: `1px solid ${tipoCambioConsumoOk ? T.cardBorder : T.red}`,
+                      borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13,
+                    }} />
+                </div>
+              )}
+
               <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
                 {monedaConsumo === "USD" ? "US$" : "S/."} {fmt(montoCobroConsumo)}
               </div>
               {hayConsumoQueCobrar && (
-                <SelectorMetodo valor={metodoConsumo} onChange={setMetodoConsumo} />
+                <React.Fragment>
+                  <SelectorMetodo valor={metodoConsumo} onChange={setMetodoConsumo} />
+                  {metodoConsumo === "mixto" && (
+                    <DesgloseMixto partes={mixtoConsumo} onChange={setMixtoConsumo}
+                      total={round2(montoCobroConsumo)} simbolo={monedaConsumo === "USD" ? "US$" : "S/."} />
+                  )}
+                </React.Fragment>
               )}
               {!hayConsumoQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
@@ -361,11 +520,12 @@ function CheckoutPantalla() {
               </div>
             )}
 
-            <button onClick={confirmarCheckout} disabled={enviando} style={{
-              width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10,
-              padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: "pointer",
+            <button onClick={confirmarCheckout} disabled={enviando || !puedeEnviar} style={{
+              width: "100%", background: (enviando || !puedeEnviar) ? T.cardBorder : T.gold,
+              color: (enviando || !puedeEnviar) ? T.ivoryMuted : "#1C1A20", border: "none", borderRadius: 10,
+              padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: (enviando || !puedeEnviar) ? "not-allowed" : "pointer",
             }}>
-              {enviando ? "Procesando..." : "✓ Cerrar cuenta"}
+              {enviando ? "Procesando..." : puedeEnviar ? "✓ Cerrar cuenta" : "Revisa los montos antes de continuar"}
             </button>
           </React.Fragment>
         )}
