@@ -110,7 +110,7 @@ function DashboardRecepcion() {
       setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
       setMovimiento(movimientoData.dias || []);
       setLimpieza(limpiezaData || []);
-      setStaffHousekeeping((staffData || []).filter((s) => s.rol === "housekeeping"));
+    setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
       setUltimaActualizacion(new Date()); setError(null);
     } catch (err) {
       console.error(err);
