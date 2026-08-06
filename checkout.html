@@ -86,8 +86,8 @@ function CheckoutPantalla() {
   const [cargandoFolio, setCargandoFolio] = useState(false);
   const [errorFolio, setErrorFolio] = useState(null);
 
+  // El adelanto siempre viene en USD desde el backend.
   const [adelantoMonto, setAdelantoMonto] = useState(0);
-  const [adelantoMoneda, setAdelantoMoneda] = useState("PEN");
   const [aplicarAdelantoA, setAplicarAdelantoA] = useState("ninguno");
 
   const [monedaHospedaje, setMonedaHospedaje] = useState("USD");
@@ -125,21 +125,23 @@ function CheckoutPantalla() {
       .then(data => {
         if (data.error) { setErrorFolio(data.error); setCargandoFolio(false); return; }
         setFolio(data);
-        setAdelantoMonto(Number(data.adelanto.monto) || 0);
-        setAplicarAdelantoA(Number(data.adelanto.monto) > 0 ? "hospedaje" : "ninguno");
+        const adelanto = Number(data.adelantoPagado) || 0;
+        setAdelantoMonto(adelanto);
+        setAplicarAdelantoA(adelanto > 0 ? "hospedaje" : "ninguno");
         setCargandoFolio(false);
       })
       .catch(() => { setErrorFolio("No se pudo cargar el folio"); setCargandoFolio(false); });
   }, [reservaSel]);
 
   const tipoCambio = folio?.tipoCambio || null;
-  const hospedajeUsd = folio ? Number(folio.hospedaje.montoUsd) || 0 : 0;
+  const hospedajeUsd = folio ? Number(folio.montoAlojamientoUsd) || 0 : 0;
   const hospedajeSoles = tipoCambio ? hospedajeUsd * tipoCambio : 0;
-  const consumoSoles = folio ? Number(folio.consumo.montoSoles) || 0 : 0;
+  const consumoSoles = folio ? Number(folio.totalConsumosSoles) || 0 : 0;
   const consumoUsd = tipoCambio ? consumoSoles / tipoCambio : 0;
 
-  const adelantoUsd = adelantoMoneda === "USD" ? adelantoMonto : (tipoCambio ? adelantoMonto / tipoCambio : 0);
-  const adelantoSoles = adelantoMoneda === "PEN" ? adelantoMonto : (tipoCambio ? adelantoMonto * tipoCambio : 0);
+  // El adelanto siempre viene y se edita en USD.
+  const adelantoUsd = adelantoMonto;
+  const adelantoSoles = tipoCambio ? adelantoUsd * tipoCambio : 0;
 
   const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsd) : hospedajeUsd;
   const saldoConsumoSoles = aplicarAdelantoA === "consumo" ? Math.max(0, consumoSoles - adelantoSoles) : consumoSoles;
@@ -149,16 +151,16 @@ function CheckoutPantalla() {
   const montoCobroHospedaje = monedaHospedaje === "USD" ? saldoHospedajeUsd : saldoHospedajeSoles;
   const montoCobroConsumo = monedaConsumo === "PEN" ? saldoConsumoSoles : saldoConsumoUsd;
 
-  const hayHospedajeQueCobar = montoCobroHospedaje > 0.009;
+  const hayHospedajeQueCobrar = montoCobroHospedaje > 0.009;
   const hayConsumoQueCobrar = montoCobroConsumo > 0.009;
 
   async function confirmarCheckout() {
     const pagos = [];
-    if (hayHospedajeQueCobar) {
-      pagos.push({ concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje, tipoCambio });
+    if (hayHospedajeQueCobrar) {
+      pagos.push({ concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje });
     }
     if (hayConsumoQueCobrar) {
-      pagos.push({ concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo, tipoCambio });
+      pagos.push({ concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo });
     }
     if (pagos.length === 0) {
       alert("No hay saldo pendiente por cobrar (el adelanto cubre todo). Contacta soporte si esto no es correcto.");
@@ -269,12 +271,7 @@ function CheckoutPantalla() {
 
             {/* HOSPEDAJE */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>🏕️ Hospedaje</div>
-                {folio.hospedaje.montoEsEstimado && (
-                  <span style={{ fontSize: 10.5, color: T.amber, background: "rgba(184,135,59,0.15)", padding: "3px 8px", borderRadius: 6, fontWeight: 700 }}>MONTO ESTIMADO</span>
-                )}
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje</div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
                 <span>US$ {fmt(hospedajeUsd)}</span>
                 <span>≈ S/ {fmt(hospedajeSoles)}</span>
@@ -291,10 +288,10 @@ function CheckoutPantalla() {
               <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
                 {monedaHospedaje === "USD" ? "US$" : "S/."} {fmt(montoCobroHospedaje)}
               </div>
-              {hayHospedajeQueCobar && (
+              {hayHospedajeQueCobrar && (
                 <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
               )}
-              {!hayHospedajeQueCobar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
+              {!hayHospedajeQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
 
             {/* CONSUMO */}
@@ -304,9 +301,9 @@ function CheckoutPantalla() {
                 <span>S/ {fmt(consumoSoles)}</span>
                 <span>≈ US$ {fmt(consumoUsd)}</span>
               </div>
-              {Object.keys(folio.consumo.desglosePorCategoria || {}).length > 0 && (
+              {Object.keys(folio.desglosePorCategoria || {}).length > 0 && (
                 <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 10 }}>
-                  {Object.entries(folio.consumo.desglosePorCategoria).map(([cat, monto]) => (
+                  {Object.entries(folio.desglosePorCategoria).map(([cat, monto]) => (
                     <div key={cat}>· {cat}: S/ {fmt(monto)}</div>
                   ))}
                 </div>
@@ -329,17 +326,17 @@ function CheckoutPantalla() {
               {!hayConsumoQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
 
-            {/* ADELANTO */}
+            {/* ADELANTO — siempre en USD */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelanto ya pagado</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelanto ya pagado (US$)</div>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 14, color: T.ivoryMuted }}>US$</span>
                 <input type="number" min="0" step="0.01" value={adelantoMonto}
                   onChange={(e) => setAdelantoMonto(Number(e.target.value) || 0)}
                   style={{
                     flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
                     padding: "9px 12px", color: T.ivory, fontSize: 14,
                   }} />
-                <BotonMoneda moneda={adelantoMoneda} onChange={setAdelantoMoneda} />
               </div>
               <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Aplicar este adelanto a:</div>
               <div style={{ display: "flex", gap: 6 }}>
