@@ -296,7 +296,7 @@ function LimpiezaPantalla() {
     cargarTareas();
     fetch(`${API_BASE_URL}/api/staff`)
       .then(r => r.json())
-      .then(data => setStaffList(Array.isArray(data) ? data.filter(s => s.rol === "housekeeping") : []))
+     .then(data => setStaffList(Array.isArray(data) ? data.filter(s => s.hace_housekeeping === true) : []))
       .catch(() => {});
   }, []);
 
