@@ -69,6 +69,12 @@ function minutosDesde(fechaISO) {
   if (!fechaISO) return null;
   return Math.max(0, Math.round((Date.now() - new Date(fechaISO).getTime()) / 60000));
 }
+function linkWhatsapp(staffList, nombre, mensaje) {
+  const persona = (staffList || []).find((s) => s.nombre === nombre);
+  if (!persona || !persona.telefono) return null;
+  const numero = "51" + String(persona.telefono).replace(/\D/g, "");
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+}
 async function apiGet(path) {
   const res = await fetch(`${API_BASE_URL}${path}`);
   if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
@@ -110,7 +116,7 @@ function DashboardRecepcion() {
       setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
       setMovimiento(movimientoData.dias || []);
       setLimpieza(limpiezaData || []);
-    setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
+      setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
       setUltimaActualizacion(new Date()); setError(null);
     } catch (err) {
       console.error(err);
@@ -327,6 +333,17 @@ const entregarActividad = async (id) => {
                                 color: staffSeleccionado ? T.bg : T.ivoryMuted,
                                 border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
                               }}>OK</button>
+                            {d.asignado_nombre && (() => {
+                              const mensaje = `Hola ${d.asignado_nombre}, te asignaron limpieza ${d.tipo_pendiente === "salida" ? "de salida" : "de rutina"} en el domo ${d.codigo}. Por favor revisa la app cuando puedas.`;
+                              const url = linkWhatsapp(staffHousekeeping, d.asignado_nombre, mensaje);
+                              return url ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" title={`Avisar a ${d.asignado_nombre} por WhatsApp`}
+                                  style={{
+                                    flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 8,
+                                    background: "rgba(107,143,113,0.14)", border: "1px solid rgba(107,143,113,0.35)", textDecoration: "none", fontSize: 13,
+                                  }}>📱</a>
+                              ) : null;
+                            })()}
                           </div>
                         </React.Fragment>
                       )}
