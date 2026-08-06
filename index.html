@@ -91,18 +91,25 @@ function DashboardRecepcion() {
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
     const [movimiento, setMovimiento] = useState([]);
     const [diaSeleccionado, setDiaSeleccionado] = useState(0);
-    
+    const [limpieza, setLimpieza] = useState([]);
+    const [staffHousekeeping, setStaffHousekeeping] = useState([]);
+    const [asignando, setAsignando] = useState({});
+
   const cargarTodo = useCallback(async () => {
     try {
-      const [kpisData, llegadasData, domosData, actividadData, movimientoData] = await Promise.all([
+      const [kpisData, llegadasData, domosData, actividadData, movimientoData, limpiezaData, staffData] = await Promise.all([
         apiGet("/api/dashboard/kpis"),
         apiGet("/api/reservas/llegadas-hoy"),
         apiGet("/api/domos"),
         apiGet("/api/consumos/pendientes"),
         apiGet("/api/dashboard/movimiento"),
+        apiGet("/api/domos/estado-limpieza"),
+        apiGet("/api/staff"),
       ]);
       setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
       setMovimiento(movimientoData.dias || []);
+      setLimpieza(limpiezaData || []);
+      setStaffHousekeeping((staffData || []).filter((s) => s.rol === "housekeeping"));
       setUltimaActualizacion(new Date()); setError(null);
     } catch (err) {
       console.error(err);
@@ -133,6 +140,13 @@ const entregarActividad = async (id) => {
   };
  const hacerCheckin = (id) => {
     window.location.href = `checkin.html?id=${id}`;
+  };
+  const asignarLimpieza = async (tareaId, staffId) => {
+    if (!tareaId || !staffId) return;
+    try {
+      await apiPost(`/api/tareas-limpieza/${tareaId}/asignar`, { staffId });
+      cargarTodo();
+    } catch (err) { console.error(err); }
   };
 
   const domoUltimaSync = domos.map((d) => d.ultima_sincronizacion_ical).filter(Boolean).sort().pop();
@@ -256,6 +270,62 @@ const entregarActividad = async (id) => {
           </div>
         )}
       </div>
+
+            <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Estado de limpieza por domo</div>
+                <a href="limpieza.html" style={{ fontSize: 11.5, color: T.gold, textDecoration: "none" }}>Ver housekeeping →</a>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+                {limpieza.length === 0 && (
+                  <div style={{ gridColumn: "1 / -1" }}><EmptyState texto="No se pudo cargar el estado de limpieza." /></div>
+                )}
+                {limpieza.map((d) => {
+                  const activa = !!d.tarea_id;
+                  const colorPunto = !activa ? T.green : (d.estado_pendiente === "pendiente" ? T.red : T.amber);
+                  const staffSeleccionado = asignando[d.domo_id] || "";
+                  return (
+                    <div key={d.domo_id} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorPunto, display: "inline-block", flexShrink: 0 }}></span>
+                        <strong style={{ fontSize: 13 }}>{d.codigo}</strong>
+                      </div>
+                      {!activa ? (
+                        <div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>Sin tareas pendientes</div>
+                      ) : (
+                        <React.Fragment>
+                          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>
+                            {d.tipo_pendiente === "salida" ? "Limpieza de salida" : "Limpieza de rutina"}
+                          </div>
+                          <div style={{ fontSize: 11, color: d.estado_pendiente === "pendiente" ? T.red : T.amber, marginBottom: 8 }}>
+                            {d.estado_pendiente === "pendiente" ? "Pendiente" : "En progreso"}
+                            {d.asignado_nombre ? ` · ${d.asignado_nombre}` : " · Sin asignar"}
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <select value={staffSeleccionado}
+                              onChange={(e) => setAsignando((prev) => ({ ...prev, [d.domo_id]: e.target.value }))}
+                              style={{ flex: 1, minWidth: 0, background: T.card, color: T.ivory, border: `1px solid ${T.cardBorder}`, borderRadius: 8, fontSize: 11, padding: "4px 6px" }}>
+                              <option value="">Asignar a…</option>
+                              {staffHousekeeping.map((s) => (
+                                <option key={s.id} value={s.id}>{s.nombre}</option>
+                              ))}
+                            </select>
+                            <button onClick={() => asignarLimpieza(d.tarea_id, staffSeleccionado)} disabled={!staffSeleccionado}
+                              style={{
+                                padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, flexShrink: 0,
+                                cursor: staffSeleccionado ? "pointer" : "default",
+                                background: staffSeleccionado ? T.gold : "transparent",
+                                color: staffSeleccionado ? T.bg : T.ivoryMuted,
+                                border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
+                              }}>OK</button>
+                          </div>
+                        </React.Fragment>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
               <section>
