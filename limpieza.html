@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Limpieza</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+
+function fmtFecha(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function EstadoBadge({ estado }) {
+  const map = {
+    pendiente: { color: T.amber, label: "Pendiente" },
+    en_progreso: { color: T.gold, label: "En progreso" },
+    completada: { color: T.green, label: "Completada" },
+  };
+  const cfg = map[estado] || { color: T.ivoryMuted, label: estado };
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, color: cfg.color, border: `1px solid ${cfg.color}`,
+      borderRadius: 20, padding: "3px 10px", textTransform: "uppercase", letterSpacing: 0.5,
+    }}>{cfg.label}</span>
+  );
+}
+
+function TareaCard({ tarea, staffId, onCambio }) {
+  const [expandida, setExpandida] = useState(tarea.estado === "en_progreso");
+  const [items, setItems] = useState(tarea.items);
+  const [tomando, setTomando] = useState(false);
+  const [completando, setCompletando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const completados = items.filter(i => i.completado).length;
+  const total = items.length;
+  const todoListo = total > 0 && completados === total;
+
+  async function tomarTarea() {
+    if (!staffId) { setError("Selecciona tu nombre arriba antes de tomar una tarea."); return; }
+    setTomando(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/tareas-limpieza/${tarea.id}/tomar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staffId }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setExpandida(true);
+      onCambio();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTomando(false);
+    }
+  }
+
+  async function toggleItem(item) {
+    const nuevoValor = !item.completado;
+    setItems(items.map(i => i.id === item.id ? { ...i, completado: nuevoValor } : i));
+    try {
+      await fetch(`${API_BASE_URL}/api/tareas-limpieza-items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completado: nuevoValor }),
+      });
+    } catch (err) {
+      // revertir si falla
+      setItems(items.map(i => i.id === item.id ? { ...i, completado: !nuevoValor } : i));
+    }
+  }
+
+  async function completarTarea() {
+    setCompletando(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/tareas-limpieza/${tarea.id}/completar`, {
+        method: "POST",
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      onCambio();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCompletando(false);
+    }
+  }
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>
+            {tarea.domo_codigo} · {tarea.tipo === "salida" ? "🧹 Limpieza de salida" : "🧺 Limpieza de rutina"}
+          </div>
+          <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 3 }}>
+            Creada {fmtFecha(tarea.creado_en)}
+            {tarea.asignado_nombre && ` · Asignada a ${tarea.asignado_nombre}`}
+          </div>
+        </div>
+        <EstadoBadge estado={tarea.estado} />
+      </div>
+
+      {tarea.tipo === "rutina" && tarea.autorizada_huesped === false && (
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 10 }}>
+          El huésped no autorizó el ingreso hoy — tarea sin checklist.
+        </div>
+      )}
+
+      {(tarea.tipo === "salida" || tarea.autorizada_huesped) && (
+        <React.Fragment>
+          {tarea.estado === "pendiente" && (
+            <button onClick={tomarTarea} disabled={tomando} style={{
+              marginTop: 12, background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+              padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>
+              {tomando ? "Tomando..." : "Tomar esta tarea"}
+            </button>
+          )}
+
+          {tarea.estado !== "pendiente" && (
+            <React.Fragment>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: T.ivoryMuted }}>
+                  Checklist: {completados}/{total}
+                </div>
+                {tarea.estado === "en_progreso" && (
+                  <button onClick={() => setExpandida(!expandida)} style={{
+                    background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer",
+                  }}>{expandida ? "Ocultar ▲" : "Ver checklist ▼"}</button>
+                )}
+              </div>
+
+              {expandida && tarea.estado === "en_progreso" && (
+                <div style={{ marginTop: 10 }}>
+                  {items.map((item) => (
+                    <label key={item.id} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "7px 0", fontSize: 13.5,
+                      color: item.completado ? T.ivoryMuted : T.ivory,
+                      textDecoration: item.completado ? "line-through" : "none",
+                      cursor: "pointer",
+                    }}>
+                      <input type="checkbox" checked={item.completado} onChange={() => toggleItem(item)}
+                        style={{ width: 16, height: 16, accentColor: T.gold, cursor: "pointer" }} />
+                      {item.descripcion}
+                    </label>
+                  ))}
+                  <button onClick={completarTarea} disabled={!todoListo || completando} style={{
+                    marginTop: 10, width: "100%", background: todoListo ? T.green : T.cardBorder,
+                    color: todoListo ? "#0E0D0F" : T.ivoryMuted, border: "none", borderRadius: 8,
+                    padding: "10px 0", fontSize: 13.5, fontWeight: 700,
+                    cursor: todoListo ? "pointer" : "not-allowed",
+                  }}>
+                    {completando ? "Guardando..." : todoListo ? "✓ Marcar tarea como completada" : "Completa todos los ítems primero"}
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
+          )}
+        </React.Fragment>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: T.red, marginTop: 8 }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+function NuevaTareaRutina({ onCreada }) {
+  const [mostrar, setMostrar] = useState(false);
+  const [domoCodigo, setDomoCodigo] = useState("");
+  const [autorizada, setAutorizada] = useState(true);
+  const [domos, setDomos] = useState([]);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (mostrar && domos.length === 0) {
+      fetch(`${API_BASE_URL}/api/domos/estado-hoy`)
+        .then(r => r.json())
+        .then(data => setDomos(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }
+  }, [mostrar]);
+
+  async function crear() {
+    if (!domoCodigo) { setError("Selecciona un domo."); return; }
+    const domo = domos.find(d => d.codigo === domoCodigo);
+    if (!domo) { setError("Domo no válido."); return; }
+    setEnviando(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/tareas-limpieza`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domoId: domo.domo_id, tipo: "rutina", autorizadaHuesped: autorizada }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setMostrar(false);
+      setDomoCodigo("");
+      onCreada();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!mostrar) {
+    return (
+      <button onClick={() => setMostrar(true)} style={{
+        background: "none", border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 10,
+        padding: "10px 14px", fontSize: 13, cursor: "pointer", width: "100%", marginBottom: 16,
+      }}>+ Crear limpieza de rutina</button>
+    );
+  }
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Nueva limpieza de rutina</div>
+      <select value={domoCodigo} onChange={(e) => setDomoCodigo(e.target.value)} style={{
+        width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+        padding: "9px 10px", color: T.ivory, fontSize: 13.5, marginBottom: 10,
+      }}>
+        <option value="">Selecciona el domo (huésped en casa)...</option>
+        {domos.map(d => (
+          <option key={d.reserva_id} value={d.codigo}>{d.codigo} — {d.nombre_completo || "Por confirmar"}</option>
+        ))}
+      </select>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12, cursor: "pointer" }}>
+        <input type="checkbox" checked={autorizada} onChange={(e) => setAutorizada(e.target.checked)}
+          style={{ width: 16, height: 16, accentColor: T.gold }} />
+        El huésped autorizó el ingreso hoy
+      </label>
+      {error && <div style={{ fontSize: 12, color: T.red, marginBottom: 10 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={crear} disabled={enviando} style={{
+          flex: 1, background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+          padding: "9px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
+        }}>{enviando ? "Creando..." : "Crear tarea"}</button>
+        <button onClick={() => setMostrar(false)} style={{
+          background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8,
+          padding: "9px 16px", fontSize: 13, cursor: "pointer",
+        }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function LimpiezaPantalla() {
+  const [tareas, setTareas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [filtro, setFiltro] = useState("activas"); // activas | completadas | todas
+  const [staffId, setStaffId] = useState("");
+  const [staffList, setStaffList] = useState([]);
+
+  function cargarTareas() {
+    setCargando(true);
+    fetch(`${API_BASE_URL}/api/tareas-limpieza`)
+      .then(r => r.json())
+      .then(data => {
+        setTareas(Array.isArray(data) ? data : []);
+        setCargando(false);
+      })
+      .catch(() => setCargando(false));
+  }
+
+  useEffect(() => {
+    cargarTareas();
+    fetch(`${API_BASE_URL}/api/staff`)
+      .then(r => r.json())
+      .then(data => setStaffList(Array.isArray(data) ? data.filter(s => s.rol === "housekeeping") : []))
+      .catch(() => {});
+  }, []);
+
+  const tareasFiltradas = tareas.filter(t => {
+    if (filtro === "activas") return t.estado !== "completada";
+    if (filtro === "completadas") return t.estado === "completada";
+    return true;
+  });
+
+  const pendientes = tareas.filter(t => t.estado === "pendiente").length;
+  const enProgreso = tareas.filter(t => t.estado === "en_progreso").length;
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 20px 60px" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+
+        <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 4px" }}>Limpieza / Housekeeping</div>
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginBottom: 18 }}>
+          {pendientes} pendiente{pendientes !== 1 ? "s" : ""} · {enProgreso} en progreso
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién eres?</div>
+          <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{
+            width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+            padding: "9px 12px", color: T.ivory, fontSize: 13.5,
+          }}>
+            <option value="">Selecciona tu nombre...</option>
+            {staffList.map(s => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </select>
+        </div>
+
+        <NuevaTareaRutina onCreada={cargarTareas} />
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {[
+            { valor: "activas", label: "Activas" },
+            { valor: "completadas", label: "Completadas" },
+            { valor: "todas", label: "Todas" },
+          ].map(f => (
+            <button key={f.valor} onClick={() => setFiltro(f.valor)} style={{
+              padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+              border: filtro === f.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+              background: filtro === f.valor ? "rgba(201,162,75,0.15)" : T.card,
+              color: filtro === f.valor ? T.gold : T.ivoryMuted,
+            }}>{f.label}</button>
+          ))}
+        </div>
+
+        {cargando ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando tareas...</div>
+        ) : tareasFiltradas.length === 0 ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>No hay tareas en esta vista.</div>
+        ) : (
+          tareasFiltradas.map(t => (
+            <TareaCard key={t.id} tarea={t} staffId={staffId || null} onCambio={cargarTareas} />
+          ))
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<LimpiezaPantalla />);
+</script>
+</body>
+</html>
