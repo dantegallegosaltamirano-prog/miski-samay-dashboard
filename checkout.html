@@ -176,7 +176,7 @@ function CorregirPago() {
   const [pagoSel, setPagoSel] = useState(null);
 
   const [staffList, setStaffList] = useState([]);
-  const [solicitanteId, setSolicitanteId] = useState("");
+  const [correctorId, setCorrectorId] = useState("");
   const [motivo, setMotivo] = useState("");
   const [monto, setMonto] = useState("");
   const [moneda, setMoneda] = useState("USD");
@@ -186,11 +186,13 @@ function CorregirPago() {
 
   const [enviando, setEnviando] = useState(false);
   const [errorForm, setErrorForm] = useState(null);
-  const [solicitudCreada, setSolicitudCreada] = useState(null);
+  const [correccionOk, setCorreccionOk] = useState(null);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/staff`).then(r => r.json()).then(setStaffList).catch(() => {});
   }, []);
+
+  const staffGerencia = staffList.filter(s => s.rol === "gerencia");
 
   async function buscar() {
     if (!query.trim()) return;
@@ -241,17 +243,18 @@ function CorregirPago() {
     }
     setMotivo("");
     setErrorForm(null);
+    setCorreccionOk(null);
   }
 
   const usaTipoCambio = pagoSel && (pagoSel.concepto === "hospedaje" ? moneda === "PEN" : moneda === "USD");
   const sumaMixto = mixto.reduce((a, p) => a + (Number(p.monto) || 0), 0);
   const mixtoOk = metodo !== "mixto" || Math.abs(sumaMixto - round2(Number(monto) || 0)) < 0.01;
   const tipoCambioOk = !usaTipoCambio || Number(tipoCambio) > 0;
-  const puedeSolicitar = pagoSel && solicitanteId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOk;
+  const puedeCorregir = pagoSel && correctorId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOk;
 
-  async function enviarSolicitud() {
-    if (!puedeSolicitar) {
-      setErrorForm("Completa todos los campos: quién solicita, motivo, monto válido y desglose correcto.");
+  async function corregirPago() {
+    if (!puedeCorregir) {
+      setErrorForm("Completa todos los campos: quién corrige, motivo, monto válido y desglose correcto.");
       return;
     }
     setEnviando(true);
@@ -266,14 +269,14 @@ function CorregirPago() {
     if (metodo === "mixto") nuevoPago.detalleMixto = mixto.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
 
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoSel.id}/solicitar-correccion`, {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoSel.id}/corregir`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motivo: motivo.trim(), staffId: solicitanteId, nuevoPago }),
+        body: JSON.stringify({ motivo: motivo.trim(), staffId: correctorId, nuevoPago }),
       });
       const data = await resp.json();
-      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo crear la solicitud");
-      setSolicitudCreada({ solicitudId: data.solicitudId, token: data.token });
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo corregir el pago");
+      setCorreccionOk({ montoTotal: data.montoTotal });
     } catch (e) {
       setErrorForm(e.message);
     } finally {
@@ -281,28 +284,20 @@ function CorregirPago() {
     }
   }
 
-  const APROBAR_URL_BASE = "https://dantegallegosaltamirano-prog.github.io/miski-samay-dashboard/aprobar.html";
-
-  function linkWhatsappAprobacion(telefono, nombreAprobador) {
-    const url = `${APROBAR_URL_BASE}?token=${solicitudCreada.token}`;
-    const msg = `Hola ${nombreAprobador}, hay una corrección de pago pendiente de tu aprobación en Miski Samay.\n\n` +
-      `Domo/reserva: ${reservaSel.codigo} — ${reservaSel.nombre_completo || ""}\n` +
-      `Motivo: ${motivo.trim()}\n\n` +
-      `Revisa y aprueba/rechaza aquí:\n${url}`;
-    return `https://wa.me/51${telefono}?text=${encodeURIComponent(msg)}`;
-  }
-
-  if (solicitudCreada) {
+  if (correccionOk) {
     return (
       <div>
         <div style={{ background: "rgba(107,143,113,0.12)", border: `1px solid ${T.green}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, color: T.green, marginBottom: 6 }}>✓ Solicitud creada</div>
-          <div style={{ fontSize: 13, color: T.ivoryMuted }}>Esperando aprobación de gerencia (Dante o Yanet). Avísales por WhatsApp:</div>
+          <div style={{ fontWeight: 700, color: T.green, marginBottom: 6 }}>✓ Pago corregido</div>
+          <div style={{ fontSize: 13, color: T.ivoryMuted }}>
+            El pago original quedó anulado (se conserva en el historial) y se creó el pago corregido
+            {correccionOk.montoTotal != null ? ` por ${moneda === "USD" ? "US$" : "S/."} ${fmt(correccionOk.montoTotal)}` : ""}.
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <a href={linkWhatsappAprobacion("941548842", "Dante")} target="_blank" rel="noopener noreferrer" style={waBtn}>📱 Avisar a Dante</a>
-          <a href={linkWhatsappAprobacion("944091461", "Yanet")} target="_blank" rel="noopener noreferrer" style={waBtn}>📱 Avisar a Yanet</a>
-        </div>
+        <button onClick={() => { setReservaSel(null); setPagoSel(null); setCorreccionOk(null); setQuery(""); setResultados([]); setBusquedaHecha(false); }}
+          style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10, padding: "12px 0", width: "100%", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+          Buscar otra reserva
+        </button>
       </div>
     );
   }
@@ -319,10 +314,10 @@ function CorregirPago() {
           </div>
         </div>
 
-        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién solicita esta corrección?</div>
-        <select value={solicitanteId} onChange={(e) => setSolicitanteId(e.target.value)} style={selectStyle}>
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién corrige este pago? (solo gerencia)</div>
+        <select value={correctorId} onChange={(e) => setCorrectorId(e.target.value)} style={selectStyle}>
           <option value="">Selecciona...</option>
-          {staffList.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </select>
 
         <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Motivo de la corrección</div>
@@ -364,12 +359,12 @@ function CorregirPago() {
           </div>
         )}
 
-        <button onClick={enviarSolicitud} disabled={enviando} style={{
+        <button onClick={corregirPago} disabled={enviando} style={{
           width: "100%", background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
           border: "none", borderRadius: 10, padding: "14px 0", fontSize: 14, fontWeight: 700,
           cursor: enviando ? "not-allowed" : "pointer", marginTop: 16,
         }}>
-          {enviando ? "Enviando..." : "Enviar solicitud de corrección"}
+          {enviando ? "Corrigiendo..." : "Corregir pago"}
         </button>
       </div>
     );
