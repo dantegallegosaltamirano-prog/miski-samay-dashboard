@@ -333,17 +333,6 @@ const entregarActividad = async (id) => {
                                 color: staffSeleccionado ? T.bg : T.ivoryMuted,
                                 border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
                               }}>OK</button>
-                            {d.asignado_nombre && (() => {
-                              const mensaje = `Hola ${d.asignado_nombre}, te asignaron limpieza ${d.tipo_pendiente === "salida" ? "de salida" : "de rutina"} en el domo ${d.codigo}. Por favor revisa la app cuando puedas.`;
-                              const url = linkWhatsapp(staffHousekeeping, d.asignado_nombre, mensaje);
-                              return url ? (
-                                <a href={url} target="_blank" rel="noopener noreferrer" title={`Avisar a ${d.asignado_nombre} por WhatsApp`}
-                                  style={{
-                                    flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 8,
-                                    background: "rgba(107,143,113,0.14)", border: "1px solid rgba(107,143,113,0.35)", textDecoration: "none", fontSize: 13,
-                                  }}>📱</a>
-                              ) : null;
-                            })()}
                           </div>
                         </React.Fragment>
                       )}
