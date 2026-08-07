@@ -56,6 +56,23 @@ function nuevaParteMixto() {
   return { metodo: "efectivo", monto: "" };
 }
 
+const selectStyle = {
+  width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+  padding: "9px 12px", color: T.ivory, fontSize: 14,
+};
+const waBtn = {
+  flex: 1, textAlign: "center", background: "#25D366", color: "#0E0D0F", padding: "12px 0",
+  borderRadius: 10, textDecoration: "none", fontWeight: 700, fontSize: 13, display: "block",
+};
+function tabEstilo(activo) {
+  return {
+    flex: 1, padding: "10px 0", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700,
+    border: activo ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+    background: activo ? "rgba(201,162,75,0.15)" : T.card,
+    color: activo ? T.gold : T.ivoryMuted,
+  };
+}
+
 function BotonMoneda({ moneda, onChange }) {
   return (
     <div style={{ display: "flex", gap: 6 }}>
@@ -146,7 +163,283 @@ function DesgloseMixto({ partes, onChange, total, simbolo }) {
   );
 }
 
+function CorregirPago() {
+  const [query, setQuery] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [resultados, setResultados] = useState([]);
+  const [busquedaHecha, setBusquedaHecha] = useState(false);
+
+  const [reservaSel, setReservaSel] = useState(null);
+  const [pagos, setPagos] = useState([]);
+  const [cargandoPagos, setCargandoPagos] = useState(false);
+
+  const [pagoSel, setPagoSel] = useState(null);
+
+  const [staffList, setStaffList] = useState([]);
+  const [solicitanteId, setSolicitanteId] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [monto, setMonto] = useState("");
+  const [moneda, setMoneda] = useState("USD");
+  const [metodo, setMetodo] = useState("efectivo");
+  const [tipoCambio, setTipoCambio] = useState("");
+  const [mixto, setMixto] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
+  const [enviando, setEnviando] = useState(false);
+  const [errorForm, setErrorForm] = useState(null);
+  const [solicitudCreada, setSolicitudCreada] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/staff`).then(r => r.json()).then(setStaffList).catch(() => {});
+  }, []);
+
+  async function buscar() {
+    if (!query.trim()) return;
+    setBuscando(true);
+    setBusquedaHecha(true);
+    setReservaSel(null);
+    setPagos([]);
+    setPagoSel(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/reservas/buscar-cerradas?q=${encodeURIComponent(query.trim())}`);
+      const data = await r.json();
+      setResultados(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setResultados([]);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  async function seleccionarReserva(r) {
+    setReservaSel(r);
+    setPagoSel(null);
+    setCargandoPagos(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${r.reserva_id}/pagos-activos`);
+      const data = await resp.json();
+      setPagos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setPagos([]);
+    } finally {
+      setCargandoPagos(false);
+    }
+  }
+
+  function seleccionarPago(p) {
+    setPagoSel(p);
+    setMonto(fmt(p.monto));
+    setMoneda(p.moneda);
+    setMetodo(p.metodo_pago);
+    setTipoCambio(p.tipo_cambio_usado ? String(p.tipo_cambio_usado) : "");
+    if (p.metodo_pago === "mixto" && p.detalle_pago_mixto) {
+      const partes = typeof p.detalle_pago_mixto === "string" ? JSON.parse(p.detalle_pago_mixto) : p.detalle_pago_mixto;
+      setMixto(Array.isArray(partes) && partes.length >= 2
+        ? partes.map(x => ({ metodo: x.metodo, monto: String(x.monto) }))
+        : [nuevaParteMixto(), nuevaParteMixto()]);
+    } else {
+      setMixto([nuevaParteMixto(), nuevaParteMixto()]);
+    }
+    setMotivo("");
+    setErrorForm(null);
+  }
+
+  const usaTipoCambio = pagoSel && (pagoSel.concepto === "hospedaje" ? moneda === "PEN" : moneda === "USD");
+  const sumaMixto = mixto.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const mixtoOk = metodo !== "mixto" || Math.abs(sumaMixto - round2(Number(monto) || 0)) < 0.01;
+  const tipoCambioOk = !usaTipoCambio || Number(tipoCambio) > 0;
+  const puedeSolicitar = pagoSel && solicitanteId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOk;
+
+  async function enviarSolicitud() {
+    if (!puedeSolicitar) {
+      setErrorForm("Completa todos los campos: quién solicita, motivo, monto válido y desglose correcto.");
+      return;
+    }
+    setEnviando(true);
+    setErrorForm(null);
+    const nuevoPago = {
+      concepto: pagoSel.concepto,
+      monto: round2(Number(monto)),
+      moneda,
+      metodoPago: metodo,
+    };
+    if (usaTipoCambio) nuevoPago.tipoCambio = Number(tipoCambio);
+    if (metodo === "mixto") nuevoPago.detalleMixto = mixto.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoSel.id}/solicitar-correccion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: motivo.trim(), staffId: solicitanteId, nuevoPago }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo crear la solicitud");
+      setSolicitudCreada({ solicitudId: data.solicitudId, token: data.token });
+    } catch (e) {
+      setErrorForm(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const APROBAR_URL_BASE = "https://dantegallegosaltamirano-prog.github.io/miski-samay-dashboard/aprobar.html";
+
+  function linkWhatsappAprobacion(telefono, nombreAprobador) {
+    const url = `${APROBAR_URL_BASE}?token=${solicitudCreada.token}`;
+    const msg = `Hola ${nombreAprobador}, hay una corrección de pago pendiente de tu aprobación en Miski Samay.\n\n` +
+      `Domo/reserva: ${reservaSel.codigo} — ${reservaSel.nombre_completo || ""}\n` +
+      `Motivo: ${motivo.trim()}\n\n` +
+      `Revisa y aprueba/rechaza aquí:\n${url}`;
+    return `https://wa.me/51${telefono}?text=${encodeURIComponent(msg)}`;
+  }
+
+  if (solicitudCreada) {
+    return (
+      <div>
+        <div style={{ background: "rgba(107,143,113,0.12)", border: `1px solid ${T.green}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, color: T.green, marginBottom: 6 }}>✓ Solicitud creada</div>
+          <div style={{ fontSize: 13, color: T.ivoryMuted }}>Esperando aprobación de gerencia (Dante o Yanet). Avísales por WhatsApp:</div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <a href={linkWhatsappAprobacion("941548842", "Dante")} target="_blank" rel="noopener noreferrer" style={waBtn}>📱 Avisar a Dante</a>
+          <a href={linkWhatsappAprobacion("944091461", "Yanet")} target="_blank" rel="noopener noreferrer" style={waBtn}>📱 Avisar a Yanet</a>
+        </div>
+      </div>
+    );
+  }
+
+  if (pagoSel) {
+    return (
+      <div>
+        <button onClick={() => setPagoSel(null)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12 }}>← Elegir otro pago</button>
+
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, textTransform: "uppercase", marginBottom: 4 }}>Pago original</div>
+          <div style={{ fontSize: 14, fontWeight: 700, textTransform: "capitalize" }}>
+            {pagoSel.concepto} — {pagoSel.moneda === "USD" ? "US$" : "S/."} {fmt(pagoSel.monto)} ({METODOS.find(m => m.valor === pagoSel.metodo_pago)?.label})
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién solicita esta corrección?</div>
+        <select value={solicitanteId} onChange={(e) => setSolicitanteId(e.target.value)} style={selectStyle}>
+          <option value="">Selecciona...</option>
+          {staffList.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Motivo de la corrección</div>
+        <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2}
+          placeholder="Ej: se cobró en efectivo pero fue transferencia"
+          style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Nuevo monto</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 14, color: T.ivoryMuted }}>{moneda === "USD" ? "US$" : "S/."}</span>
+          <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}
+            style={{ flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", color: T.ivory, fontSize: 14 }} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted }}>Nueva moneda:</div>
+          <BotonMoneda moneda={moneda} onChange={setMoneda} />
+        </div>
+
+        {usaTipoCambio && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>
+              Tipo de cambio ({pagoSel.concepto === "hospedaje" ? "venta" : "compra"}) — S/ por US$1:
+            </span>
+            <input type="number" min="0" step="0.001" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioOk ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Nuevo método de pago:</div>
+        <SelectorMetodo valor={metodo} onChange={setMetodo} />
+        {metodo === "mixto" && (
+          <DesgloseMixto partes={mixto} onChange={setMixto} total={round2(Number(monto) || 0)} simbolo={moneda === "USD" ? "US$" : "S/."} />
+        )}
+
+        {errorForm && (
+          <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, margin: "14px 0" }}>
+            {errorForm}
+          </div>
+        )}
+
+        <button onClick={enviarSolicitud} disabled={enviando} style={{
+          width: "100%", background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
+          border: "none", borderRadius: 10, padding: "14px 0", fontSize: 14, fontWeight: 700,
+          cursor: enviando ? "not-allowed" : "pointer", marginTop: 16,
+        }}>
+          {enviando ? "Enviando..." : "Enviar solicitud de corrección"}
+        </button>
+      </div>
+    );
+  }
+
+  if (reservaSel) {
+    return (
+      <div>
+        <button onClick={() => setReservaSel(null)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12 }}>← Elegir otra reserva</button>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{reservaSel.codigo} — {reservaSel.nombre_completo || "Por confirmar"}</div>
+        {cargandoPagos ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando pagos...</div>
+        ) : pagos.length === 0 ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Esta reserva no tiene pagos activos para corregir.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pagos.map(p => (
+              <button key={p.id} onClick={() => seleccionarPago(p)} style={{
+                textAlign: "left", padding: "12px 14px", borderRadius: 10, cursor: "pointer",
+                border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                  <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{p.concepto}</span>
+                  <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>
+                  {METODOS.find(m => m.valor === p.metodo_pago)?.label} · {p.cerrado_en ? new Date(p.cerrado_en).toLocaleDateString("es-PE") : ""}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Buscar por nombre de huésped o código</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }}
+          placeholder="Ej: Heather o D1"
+          style={{ flex: 1, background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 12px", color: T.ivory, fontSize: 14 }} />
+        <button onClick={buscar} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "0 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Buscar</button>
+      </div>
+      {buscando && <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Buscando...</div>}
+      {!buscando && busquedaHecha && resultados.length === 0 && (
+        <div style={{ color: T.ivoryMuted, fontSize: 13 }}>No se encontraron reservas cerradas con ese criterio.</div>
+      )}
+      {!buscando && resultados.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {resultados.map(r => (
+            <button key={r.reserva_id} onClick={() => seleccionarReserva(r)} style={{
+              textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+              border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory, fontSize: 13.5,
+            }}>
+              <strong>{r.codigo}</strong> — {r.nombre_completo || "Por confirmar"}
+              <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 2 }}>
+                Salida: {r.fecha_salida ? new Date(r.fecha_salida).toLocaleDateString("es-PE") : "—"}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CheckoutPantalla() {
+  const [modo, setModo] = useState("checkout"); // "checkout" | "corregir"
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
@@ -333,6 +626,16 @@ function CheckoutPantalla() {
 
         <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
         <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Check-out / Cierre de cuenta</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setModo("checkout")} style={tabEstilo(modo === "checkout")}>Cerrar cuenta</button>
+          <button onClick={() => setModo("corregir")} style={tabEstilo(modo === "corregir")}>Corregir un pago anterior</button>
+        </div>
+
+        {modo === "corregir" ? (
+          <CorregirPago />
+        ) : (
+        <React.Fragment>
 
         {idBloqueado ? (
           <div style={{ marginBottom: 20 }}>
@@ -530,6 +833,9 @@ function CheckoutPantalla() {
           </React.Fragment>
         )}
 
+        </React.Fragment>
+        )}
+
       </div>
     </div>
   );
@@ -539,4 +845,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<CheckoutPantalla />
 </script>
 </body>
 </html>
-
