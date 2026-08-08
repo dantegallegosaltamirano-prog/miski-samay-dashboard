@@ -172,10 +172,50 @@ function DesgloseMixto({ partes, onChange, total, simbolo }) {
   );
 }
 
-function PreCuenta({ folio, reservaSel, onContinuar }) {
+function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
   const hospedajeUsd = Number(folio.montoAlojamientoUsd) || 0;
   const detalle = Array.isArray(folio.detalleConsumos) ? folio.detalleConsumos : [];
   const totalConsumoSoles = detalle.reduce((a, it) => a + (Number(it.subtotal) || 0), 0);
+
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [descItem, setDescItem] = useState("");
+  const [cantItem, setCantItem] = useState("1");
+  const [precioItem, setPrecioItem] = useState("");
+  const [agregando, setAgregando] = useState(false);
+  const [errorItem, setErrorItem] = useState(null);
+
+  const puedeAgregar = descItem.trim().length > 0 && Number(cantItem) > 0 && Number(precioItem) > 0;
+
+  async function agregarFrigobar() {
+    if (!puedeAgregar) {
+      setErrorItem("Completa la descripción, cantidad y precio unitario.");
+      return;
+    }
+    setAgregando(true);
+    setErrorItem(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/consumos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoria: "frigobar",
+          descripcion: descItem.trim(),
+          cantidad: Number(cantItem),
+          precioUnitario: round2(Number(precioItem)),
+          monto: round2(Number(cantItem) * Number(precioItem)),
+          estado: "entregado",
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo agregar el consumo");
+      setDescItem(""); setCantItem("1"); setPrecioItem(""); setMostrarForm(false);
+      onFolioActualizado();
+    } catch (e) {
+      setErrorItem(e.message);
+    } finally {
+      setAgregando(false);
+    }
+  }
 
   return (
     <div>
@@ -198,7 +238,7 @@ function PreCuenta({ folio, reservaSel, onContinuar }) {
           <div style={{ marginBottom: 8 }}>
             {detalle.map((it, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0" }}>
-                <span>{it.cantidad}x {it.descripcion}</span>
+                <span>{it.cantidad}x {it.descripcion}{it.categoria === "frigobar" ? " (frigobar)" : ""}</span>
                 <span>S/ {fmt(it.subtotal)}</span>
               </div>
             ))}
@@ -215,6 +255,51 @@ function PreCuenta({ folio, reservaSel, onContinuar }) {
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.ivoryMuted, borderTop: `1px solid ${T.cardBorder}`, paddingTop: 8 }}>
             <span>Adelanto ya pagado</span>
             <span>US$ {fmt(folio.adelantoPagado)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="no-imprimir" style={{ marginBottom: 16 }}>
+        {!mostrarForm ? (
+          <button onClick={() => setMostrarForm(true)} style={{
+            width: "100%", background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted,
+            borderRadius: 10, padding: "10px 0", fontWeight: 600, fontSize: 12.5, cursor: "pointer",
+          }}>
+            + Agregar consumo no reportado (frigobar, etc.)
+          </button>
+        ) : (
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Agregar consumo de frigobar u otro no reportado:</div>
+            <input value={descItem} onChange={(e) => setDescItem(e.target.value)}
+              placeholder="Ej: Cerveza, Gaseosa, Agua"
+              style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Cantidad</div>
+                <input type="number" min="1" step="1" value={cantItem} onChange={(e) => setCantItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Precio unitario (S/)</div>
+                <input type="number" min="0" step="0.01" value={precioItem} onChange={(e) => setPrecioItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+            </div>
+            {errorItem && (
+              <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>
+                {errorItem}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setMostrarForm(false); setErrorItem(null); }} style={{
+                flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                borderRadius: 8, padding: "9px 0", fontSize: 12.5, cursor: "pointer",
+              }}>Cancelar</button>
+              <button onClick={agregarFrigobar} disabled={agregando} style={{
+                flex: 1, background: agregando ? T.cardBorder : T.gold, color: agregando ? T.ivoryMuted : "#1C1A20",
+                border: "none", borderRadius: 8, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: agregando ? "not-allowed" : "pointer",
+              }}>{agregando ? "Agregando..." : "Agregar a la cuenta"}</button>
+            </div>
           </div>
         )}
       </div>
@@ -556,12 +641,10 @@ function CheckoutPantalla() {
       .catch(() => setCargando(false));
   }, []);
 
-  useEffect(() => {
+  function cargarFolio() {
     if (!reservaSel) return;
     setCargandoFolio(true);
     setErrorFolio(null);
-    setFolio(null);
-    setPreCuentaVista(false);
     fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/folio`)
       .then(r => r.json())
       .then(data => {
@@ -576,6 +659,13 @@ function CheckoutPantalla() {
         setCargandoFolio(false);
       })
       .catch(() => { setErrorFolio("No se pudo cargar el folio"); setCargandoFolio(false); });
+  }
+
+  useEffect(() => {
+    if (!reservaSel) return;
+    setFolio(null);
+    setPreCuentaVista(false);
+    cargarFolio();
   }, [reservaSel]);
 
   const tipoCambioRef = folio?.tipoCambio || null; // solo referencial, para desglose por categoría y adelanto
@@ -758,7 +848,7 @@ function CheckoutPantalla() {
         )}
 
         {reservaSel && folio && !cargandoFolio && !preCuentaVista && (
-          <PreCuenta folio={folio} reservaSel={reservaSel} onContinuar={() => setPreCuentaVista(true)} />
+          <PreCuenta folio={folio} reservaSel={reservaSel} onContinuar={() => setPreCuentaVista(true)} onFolioActualizado={cargarFolio} />
         )}
 
         {reservaSel && folio && !cargandoFolio && preCuentaVista && (
@@ -924,3 +1014,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<CheckoutPantalla />
 </script>
 </body>
 </html>
+
