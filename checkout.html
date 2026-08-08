@@ -11,6 +11,15 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
   input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  @media print {
+    body * { visibility: hidden; }
+    #pre-cuenta-imprimible, #pre-cuenta-imprimible * { visibility: visible; }
+    #pre-cuenta-imprimible {
+      position: absolute; left: 0; top: 0; width: 100%;
+      background: #fff !important; color: #000 !important; border: none !important; padding: 20px;
+    }
+    #pre-cuenta-imprimible * { color: #000 !important; border-color: #ccc !important; }
+  }
 </style>
 </head>
 <body>
@@ -158,6 +167,71 @@ function DesgloseMixto({ partes, onChange, total, simbolo }) {
       )}
       <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: cuadra ? T.green : T.red }}>
         Suma: {simbolo} {fmt(suma)} / {simbolo} {fmt(total)} {cuadra ? "✓" : "— no coincide con el total"}
+      </div>
+    </div>
+  );
+}
+
+function PreCuenta({ folio, reservaSel, onContinuar }) {
+  const hospedajeUsd = Number(folio.montoAlojamientoUsd) || 0;
+  const detalle = Array.isArray(folio.detalleConsumos) ? folio.detalleConsumos : [];
+  const totalConsumoSoles = detalle.reduce((a, it) => a + (Number(it.subtotal) || 0), 0);
+
+  return (
+    <div>
+      <div id="pre-cuenta-imprimible" style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Miski Samay Domo Boutique</div>
+          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>Pre-cuenta — {reservaSel.codigo} · {reservaSel.nombre_completo || "Por confirmar"}</div>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🏕️ Hospedaje</div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
+          <span>Estadía completa</span>
+          <span style={{ fontWeight: 700, color: T.gold }}>US$ {fmt(hospedajeUsd)}</span>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🍽️ Consumo</div>
+        {detalle.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginBottom: 16 }}>Sin consumos registrados.</div>
+        ) : (
+          <div style={{ marginBottom: 8 }}>
+            {detalle.map((it, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0" }}>
+                <span>{it.cantidad}x {it.descripcion}</span>
+                <span>S/ {fmt(it.subtotal)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {detalle.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 700, borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 8, marginBottom: 16 }}>
+            <span>Total consumo</span>
+            <span style={{ color: T.gold }}>S/ {fmt(totalConsumoSoles)}</span>
+          </div>
+        )}
+
+        {Number(folio.adelantoPagado) > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.ivoryMuted, borderTop: `1px solid ${T.cardBorder}`, paddingTop: 8 }}>
+            <span>Adelanto ya pagado</span>
+            <span>US$ {fmt(folio.adelantoPagado)}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={() => window.print()} style={{
+          flex: 1, background: T.card, border: `1px solid ${T.cardBorder}`, color: T.ivory,
+          borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+        }}>
+          🖨️ Imprimir
+        </button>
+        <button onClick={onContinuar} style={{
+          flex: 1, background: T.gold, color: "#1C1A20", border: "none",
+          borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+        }}>
+          Continuar a cobro →
+        </button>
       </div>
     </div>
   );
@@ -464,6 +538,7 @@ function CheckoutPantalla() {
   const [enviando, setEnviando] = useState(false);
   const [resultadoOk, setResultadoOk] = useState(null);
   const [errorEnvio, setErrorEnvio] = useState(null);
+  const [preCuentaVista, setPreCuentaVista] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/domos/estado-hoy`)
@@ -486,6 +561,7 @@ function CheckoutPantalla() {
     setCargandoFolio(true);
     setErrorFolio(null);
     setFolio(null);
+    setPreCuentaVista(false);
     fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/folio`)
       .then(r => r.json())
       .then(data => {
@@ -681,8 +757,16 @@ function CheckoutPantalla() {
           </div>
         )}
 
-        {reservaSel && folio && !cargandoFolio && (
+        {reservaSel && folio && !cargandoFolio && !preCuentaVista && (
+          <PreCuenta folio={folio} reservaSel={reservaSel} onContinuar={() => setPreCuentaVista(true)} />
+        )}
+
+        {reservaSel && folio && !cargandoFolio && preCuentaVista && (
           <React.Fragment>
+
+            <button onClick={() => setPreCuentaVista(false)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12, padding: 0 }}>
+              ← Volver a la pre-cuenta
+            </button>
 
             <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 18 }}>
               Tipo de cambio referencial de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambioRef)}</strong> por US$ 1
