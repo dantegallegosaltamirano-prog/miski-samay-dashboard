@@ -304,10 +304,7 @@ if (cargando) {
               <select value={canal} onChange={(e) => setCanal(e.target.value)} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "4px 8px", fontSize: 12 }}>
                 <option>Directo</option><option>Booking.com</option><option>Expedia</option><option>Airbnb</option>
               </select>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "4px 8px" }}>
-                <span style={labelMuted}>T.C.</span>
-                <input value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} style={{ width: 46, background: "transparent", border: "none", color: T.ivory, fontSize: 12 }} />
-              </div>
+            
             </div>
           </div>
 
@@ -352,10 +349,7 @@ if (cargando) {
             <span>Saldo pendiente (US$)</span>
             <span>US$ {fmt(totales.saldoPendienteUsd)}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(201,162,75,0.12)", borderRadius: 8, padding: "10px 12px", marginTop: 10 }}>
-            <span style={{ fontSize: 13, color: T.gold }}>Total a cobrar (S/) · TC {tipoCambio || "0"}</span>
-            <span style={{ fontSize: 17, fontWeight: 600, color: T.gold }}>S/ {fmt(totales.totalSoles)}</span>
-          </div>
+         
           <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>Ver montos y tipo de cambio en Aloha · no llegan por iCal</div>
         </div>
 
