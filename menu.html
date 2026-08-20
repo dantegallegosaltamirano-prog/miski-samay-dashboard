@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Menú</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71", red: "#A83E32",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
+const NUEVA_CATEGORIA = "__nueva__";
+
+function cargarSesion() {
+try {
+const raw = localStorage.getItem(SESION_KEY);
+return raw ? JSON.parse(raw) : null;
+} catch { return null; }
+}
+
+async function apiGet(path) {
+const res = await fetch(`${API_BASE_URL}${path}`);
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
+}
+async function apiPost(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, {
+method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
+}
+async function apiPut(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, {
+method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
+}
+
+function etiquetaCategoria(valor) {
+const mapa = { gastronomia: "Restaurant", bebidas: "Bar", lavanderia: "Lavandería", otros: "Otros" };
+return mapa[valor] || (valor.charAt(0).toUpperCase() + valor.slice(1));
+}
+
+// Formulario para crear o editar un producto. Si `producto` viene con
+// datos, es edición; si viene vacío, es creación.
+function FormularioProducto({ producto, categorias, onGuardado, onCancelar }) {
+const esEdicion = !!producto?.id;
+const [categoria, setCategoria] = useState(producto?.categoria || (categorias[0] || ""));
+const [categoriaNueva, setCategoriaNueva] = useState("");
+const [nombre, setNombre] = useState(producto?.nombre || "");
+const [precio, setPrecio] = useState(producto?.precio != null ? String(producto.precio) : "");
+const [descripcion, setDescripcion] = useState(producto?.descripcion || "");
+const [activo, setActivo] = useState(producto?.activo != null ? producto.activo : true);
+const [guardando, setGuardando] = useState(false);
+const [error, setError] = useState(null);
+
+const usandoCategoriaNueva = categoria === NUEVA_CATEGORIA;
+
+async function guardar() {
+const categoriaFinal = usandoCategoriaNueva ? categoriaNueva.trim() : categoria;
+if (!categoriaFinal) { setError("Elige o escribe una categoría."); return; }
+if (!nombre.trim()) { setError("Escribe el nombre del producto."); return; }
+if (precio === "" || isNaN(Number(precio)) || Number(precio) < 0) { setError("El precio no es válido."); return; }
+
+setGuardando(true);
+setError(null);
+try {
+if (esEdicion) {
+await apiPut(`/api/productos/${producto.id}`, {
+categoria: categoriaFinal, nombre: nombre.trim(), precio: Number(precio),
+descripcion: descripcion.trim() || null, activo,
+});
+} else {
+await apiPost(`/api/productos`, {
+categoria: categoriaFinal, nombre: nombre.trim(), precio: Number(precio),
+descripcion: descripcion.trim() || null,
+});
+}
+onGuardado();
+} catch (err) {
+setError("No se pudo guardar: " + err.message);
+} finally {
+setGuardando(false);
+}
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20, marginBottom: 20 }}>
+<div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+{esEdicion ? `Editar: ${producto.nombre}` : "Nuevo producto"}
+</div>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Categoría</label>
+<select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}}>
+{categorias.map((c) => <option key={c} value={c}>{etiquetaCategoria(c)}</option>)}
+<option value={NUEVA_CATEGORIA}>＋ Nueva categoría…</option>
+</select>
+{usandoCategoriaNueva && (
+<input value={categoriaNueva} onChange={(e) => setCategoriaNueva(e.target.value)}
+placeholder="Nombre de la categoría nueva" style={{
+width: "100%", marginTop: 8, background: T.bg, color: T.ivory, border: `1px solid ${T.gold}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+)}
+</div>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Precio (S/)</label>
+<input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0.00" style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+</div>
+</div>
+
+<div style={{ marginBottom: 12 }}>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Nombre del producto</label>
+<input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Lomo saltado" style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+</div>
+
+<div style={{ marginBottom: 12 }}>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Descripción (opcional)</label>
+<input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej: con arroz y papas" style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+</div>
+
+{esEdicion && (
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 16, cursor: "pointer" }}>
+<input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+Visible en el menú (si lo desmarcas, se oculta sin borrarlo)
+</label>
+)}
+
+{error && <div style={{ color: "#E8B4AC", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+
+<div style={{ display: "flex", gap: 10 }}>
+<button onClick={guardar} disabled={guardando} style={{
+background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "10px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+}}>
+{guardando ? "Guardando..." : "Guardar"}
+</button>
+<button onClick={onCancelar} style={{
+background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+padding: "10px 18px", fontSize: 13.5, cursor: "pointer",
+}}>
+Cancelar
+</button>
+</div>
+</div>
+);
+}
+
+function PantallaMenu({ sesion }) {
+const [productos, setProductos] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [error, setError] = useState(null);
+const [categoriaActiva, setCategoriaActiva] = useState(null);
+const [editando, setEditando] = useState(null); // null | {} (nuevo) | producto (editar)
+
+async function recargar() {
+try {
+const data = await apiGet("/api/productos/admin");
+setProductos(Array.isArray(data) ? data : []);
+setError(null);
+} catch (err) {
+setError("No se pudo conectar con el servidor.");
+} finally {
+setCargando(false);
+}
+}
+
+useEffect(() => { recargar(); }, []);
+
+const categorias = [...new Set(productos.map(p => p.categoria))];
+useEffect(() => {
+if (!categoriaActiva && categorias.length > 0) setCategoriaActiva(categorias[0]);
+}, [categorias.join(",")]);
+
+async function alternarVisible(producto) {
+try {
+await apiPut(`/api/productos/${producto.id}`, { activo: !producto.activo });
+recargar();
+} catch (err) {
+alert("No se pudo cambiar: " + err.message);
+}
+}
+
+function alGuardar() {
+setEditando(null);
+recargar();
+}
+
+const productosDeCategoria = categoriaActiva ? productos.filter(p => p.categoria === categoriaActiva) : [];
+
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", padding: "32px 40px" }}>
+<div style={{ maxWidth: 900, margin: "0 auto" }}>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 24px" }}>
+<h1 style={{ fontSize: 22, margin: 0 }}>Editar menú — Restaurant y Bar</h1>
+{!editando && (
+<button onClick={() => setEditando({})} style={{
+background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+}}>
+＋ Nuevo producto
+</button>
+)}
+</div>
+
+{error && (
+<div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginBottom: 20 }}>
+⚠ {error}
+</div>
+)}
+
+{editando && (
+<FormularioProducto
+producto={editando.id ? editando : null}
+categorias={categorias.length > 0 ? categorias : ["gastronomia", "bebidas", "lavanderia", "otros"]}
+onGuardado={alGuardar}
+onCancelar={() => setEditando(null)}
+/>
+)}
+
+{cargando ? (
+<div style={{ color: T.ivoryMuted, textAlign: "center", padding: "48px 0" }}>Cargando menú...</div>
+) : (
+<React.Fragment>
+<div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+{categorias.map((c) => {
+const activa = categoriaActiva === c;
+return (
+<button key={c} onClick={() => setCategoriaActiva(c)} style={{
+padding: "8px 16px", borderRadius: 999, cursor: "pointer", fontSize: 13, fontWeight: 600,
+border: activa ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+background: activa ? "rgba(201,162,75,0.15)" : T.card,
+color: activa ? T.gold : T.ivory,
+}}>
+{etiquetaCategoria(c)}
+</button>
+);
+})}
+</div>
+
+{productosDeCategoria.length === 0 ? (
+<div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 16, padding: 24, fontSize: 12.5, textAlign: "center" }}>
+No hay productos en esta categoría todavía.
+</div>
+) : (
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+{productosDeCategoria.map((p) => (
+<div key={p.id} style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: "12px 16px",
+opacity: p.activo ? 1 : 0.5,
+}}>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 13.5, fontWeight: 600 }}>
+{p.nombre} {!p.activo && <span style={{ fontSize: 10.5, color: T.ivoryMuted, fontWeight: 400 }}>(oculto)</span>}
+</div>
+{p.descripcion && <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>{p.descripcion}</div>}
+</div>
+<div style={{ fontSize: 13.5, color: T.gold, fontWeight: 700, flexShrink: 0 }}>S/ {Number(p.precio).toFixed(2)}</div>
+<div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+<button onClick={() => setEditando(p)} style={{
+background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory,
+borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer",
+}}>
+Editar
+</button>
+<button onClick={() => alternarVisible(p)} style={{
+background: "transparent", border: `1px solid ${T.cardBorder}`,
+color: p.activo ? "#D98A7D" : T.green,
+borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer",
+}}>
+{p.activo ? "Ocultar" : "Mostrar"}
+</button>
+</div>
+</div>
+))}
+</div>
+)}
+</React.Fragment>
+)}
+</div>
+</div>
+);
+}
+
+function AppGate() {
+const sesion = cargarSesion();
+if (!sesion) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>Primero debes iniciar sesión.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Ir al panel principal</a>
+</div>
+);
+}
+if (!sesion.puede_editar_menu) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>No tienes permiso para editar el menú.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Volver al panel</a>
+</div>
+);
+}
+return <PantallaMenu sesion={sesion} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
+</script>
+</body>
+</html>
