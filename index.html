@@ -34,7 +34,8 @@ const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 const REFRESH_MS = 30000;
 const SESION_KEY = "ms_staff_sesion";
 
-const navItems = [
+function navItems(sesion) {
+const items = [
 { icon: "▦", label: "Dashboard", active: true },
 { icon: "→", label: "Check-in", href: "llegadas.html" },
 { icon: "←", label: "Check-out", href: "checkout.html" },
@@ -45,6 +46,11 @@ const navItems = [
 { icon: "▤", label: "Reportes" },
 { icon: "⚙", label: "Configuración" },
 ];
+if (sesion && sesion.puede_editar_menu) {
+items.splice(items.length - 1, 0, { icon: "🍽", label: "Menú", href: "menu.html" });
+}
+return items;
+}
 
 const ICONO_POR_CATEGORIA = {
 gastronomia: "🍽", bebidas: "🍷", experiencia_incluida: "✦",
@@ -313,7 +319,7 @@ return (
 </div>
 </div>
 <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-{navItems.map((item) => {
+{navItems(sesion).map((item) => {
 const construido = item.active || !!item.href;
 return (
 <div key={item.label} onClick={() => { if (item.href) window.location.href = item.href; }} style={{
