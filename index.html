@@ -4,14 +4,17 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Miski Samay — Panel de Recepción</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="theme-color" content="#0E0D0F" />
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
-  ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-thumb { background: #2A2730; border-radius: 4px; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: #2A2730; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -21,435 +24,586 @@
 const { useState, useEffect, useCallback } = React;
 
 const T = {
-  bg: "#0E0D0F", bgElevated: "#17151A", card: "#1C1A20", cardBorder: "#2A2730",
-  gold: "#C9A24B", goldSoft: "#8A6E33", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
-  red: "#A83E32", green: "#6B8F71", amber: "#B8873B",
+bg: "#0E0D0F", bgElevated: "#17151A", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", goldSoft: "#8A6E33", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+red: "#A83E32", green: "#6B8F71", amber: "#B8873B",
 };
 
 // EDITA ESTA LÍNEA si tu backend tiene otra URL
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 const REFRESH_MS = 30000;
+const SESION_KEY = "ms_staff_sesion";
 
 const navItems = [
-  { icon: "▦", label: "Dashboard", active: true },
-  { icon: "→", label: "Check-in", href: "llegadas.html" },
-  { icon: "←", label: "Check-out", href: "checkout.html" },
-  { icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
-  { icon: "☺", label: "Huéspedes" },
-  { icon: "●", label: "Domos" },
-  { icon: "◈", label: "Actividad en Vivo", href: "actividad.html" },
-  { icon: "▤", label: "Reportes" },
-  { icon: "⚙", label: "Configuración" },
+{ icon: "▦", label: "Dashboard", active: true },
+{ icon: "→", label: "Check-in", href: "llegadas.html" },
+{ icon: "←", label: "Check-out", href: "checkout.html" },
+{ icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
+{ icon: "☺", label: "Huéspedes" },
+{ icon: "●", label: "Domos" },
+{ icon: "◈", label: "Actividad en Vivo", href: "actividad.html" },
+{ icon: "▤", label: "Reportes" },
+{ icon: "⚙", label: "Configuración" },
 ];
 
 const ICONO_POR_CATEGORIA = {
-  gastronomia: "🍽", bebidas: "🍷", experiencia_incluida: "✦",
-  experiencia_premium: "✦", transporte: "🚗", lavanderia: "👕",
+gastronomia: "🍽", bebidas: "🍷", experiencia_incluida: "✦",
+experiencia_premium: "✦", transporte: "🚗", lavanderia: "👕",
 };
 const ETIQUETA_ESTADO = { pendiente: "Pendiente", en_preparacion: "En preparación", entregado: "Entregado" };
 
 function estadoColor(estado) {
-  if (estado === "pendiente") return T.red;
-  if (estado === "en_preparacion") return T.amber;
-  return T.green;
+if (estado === "pendiente") return T.red;
+if (estado === "en_preparacion") return T.amber;
+return T.green;
 }
 function iniciales(nombreCompleto = "") {
-  const partes = nombreCompleto.trim().split(/\s+/);
-  if (!partes[0]) return "?";
-  return (partes[0][0] + (partes[1]?.[0] || "")).toUpperCase();
+const partes = nombreCompleto.trim().split(/\s+/);
+if (!partes[0]) return "?";
+return (partes[0][0] + (partes[1]?.[0] || "")).toUpperCase();
 }
 function formatearHora(valor) {
-  if (!valor) return "Por confirmar";
-  const soloHora = String(valor).match(/\d{2}:\d{2}/);
-  if (soloHora) return soloHora[0];
-  try { return new Date(valor).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }); }
-  catch { return "Por confirmar"; }
+if (!valor) return "Por confirmar";
+const soloHora = String(valor).match(/\d{2}:\d{2}/);
+if (soloHora) return soloHora[0];
+try { return new Date(valor).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }); }
+catch { return "Por confirmar"; }
 }
 function minutosDesde(fechaISO) {
-  if (!fechaISO) return null;
-  return Math.max(0, Math.round((Date.now() - new Date(fechaISO).getTime()) / 60000));
+if (!fechaISO) return null;
+return Math.max(0, Math.round((Date.now() - new Date(fechaISO).getTime()) / 60000));
 }
 function linkWhatsapp(staffList, nombre, mensaje) {
-  const persona = (staffList || []).find((s) => s.nombre === nombre);
-  if (!persona || !persona.telefono) return null;
-  const numero = "51" + String(persona.telefono).replace(/\D/g, "");
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+const persona = (staffList || []).find((s) => s.nombre === nombre);
+if (!persona || !persona.telefono) return null;
+const numero = "51" + String(persona.telefono).replace(/\D/g, "");
+return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
-  return res.json();
+const res = await fetch(`${API_BASE_URL}${path}`);
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
 }
 async function apiPost(path, body) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
-  });
-  if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
-  return res.json();
+const res = await fetch(`${API_BASE_URL}${path}`, {
+method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
 }
 
-function DashboardRecepcion() {
-  const [kpis, setKpis] = useState(null);
-  const [llegadas, setLlegadas] = useState([]);
-  const [domos, setDomos] = useState([]);
-  const [actividad, setActividad] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
-    const [movimiento, setMovimiento] = useState([]);
-    const [diaSeleccionado, setDiaSeleccionado] = useState(0);
-    const [limpieza, setLimpieza] = useState([]);
-    const [staffHousekeeping, setStaffHousekeeping] = useState([]);
-    const [asignando, setAsignando] = useState({});
+function cargarSesion() {
+try {
+const raw = localStorage.getItem(SESION_KEY);
+return raw ? JSON.parse(raw) : null;
+} catch { return null; }
+}
+function guardarSesion(sesion) {
+localStorage.setItem(SESION_KEY, JSON.stringify(sesion));
+}
+function cerrarSesion() {
+localStorage.removeItem(SESION_KEY);
+}
 
-  const cargarTodo = useCallback(async () => {
-    try {
-      const [kpisData, llegadasData, domosData, actividadData, movimientoData, limpiezaData, staffData] = await Promise.all([
-        apiGet("/api/dashboard/kpis"),
-        apiGet("/api/reservas/llegadas-hoy"),
-        apiGet("/api/domos"),
-        apiGet("/api/consumos/pendientes"),
-        apiGet("/api/dashboard/movimiento"),
-        apiGet("/api/domos/estado-limpieza"),
-        apiGet("/api/staff"),
-      ]);
-      setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
-      setMovimiento(movimientoData.dias || []);
-      setLimpieza(limpiezaData || []);
-      setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
-      setUltimaActualizacion(new Date()); setError(null);
-    } catch (err) {
-      console.error(err);
-      setError("No se pudo conectar con el backend: " + API_BASE_URL);
-    } finally { setCargando(false); }
-  }, []);
+// -----------------------------------------------------------------
+// Pantalla de entrada: elegir quién eres + PIN de 4 dígitos.
+// -----------------------------------------------------------------
+function LoginScreen({ onLogin }) {
+const [staffList, setStaffList] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [error, setError] = useState(null);
+const [seleccionado, setSeleccionado] = useState(null);
+const [pin, setPin] = useState("");
+const [entrando, setEntrando] = useState(false);
+const [errorLogin, setErrorLogin] = useState(null);
 
-  useEffect(() => {
-    // Al abrir el dashboard, forzamos una sincronización con Aloha antes
-    // de cargar los datos, para que el panel arranque con información
-    // lo más actualizada posible (no esperamos al cron de fondo).
-    fetch(`${API_BASE_URL}/api/sync/ical-now`)
-      .catch(() => {})
-      .finally(() => cargarTodo());
-    const intervalo = setInterval(cargarTodo, REFRESH_MS);
-    return () => clearInterval(intervalo);
-  }, [cargarTodo]);
+useEffect(() => {
+apiGet("/api/staff")
+.then((data) => { setStaffList(data || []); setCargando(false); })
+.catch(() => { setError("No se pudo conectar con el servidor."); setCargando(false); });
+}, []);
 
-  const tomarActividad = async (id) => {
-    setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "en_preparacion" } : a)));
-    try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
-    catch (err) { console.error(err); cargarTodo(); }
-  };
+const elegirPersona = (persona) => {
+setSeleccionado(persona);
+setPin("");
+setErrorLogin(null);
+};
+
+const agregarDigito = (d) => {
+if (pin.length >= 4) return;
+setPin(pin + d);
+};
+const borrarDigito = () => setPin(pin.slice(0, -1));
+
+useEffect(() => {
+if (pin.length === 4 && seleccionado && !entrando) {
+intentarLogin();
+}
+// eslint-disable-next-line
+}, [pin]);
+
+async function intentarLogin() {
+setEntrando(true);
+setErrorLogin(null);
+try {
+const data = await apiPost("/api/staff/login", { staffId: seleccionado.id, pin });
+guardarSesion(data);
+onLogin(data);
+} catch (err) {
+setErrorLogin("PIN incorrecto. Intenta de nuevo.");
+setPin("");
+} finally {
+setEntrando(false);
+}
+}
+
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+<svg width="46" height="46" viewBox="0 0 30 30" fill="none" style={{ marginBottom: 12 }}>
+<path d="M15 3 L27 21 H3 Z" stroke="#C9A24B" strokeWidth="1" fill="none" />
+<path d="M15 3 L15 21 M9 12 L21 12 M6 16.5 L24 16.5" stroke="#C9A24B" strokeWidth="0.6" opacity="0.6" />
+</svg>
+<div style={{ fontSize: 18, marginBottom: 2 }}>Miski Samay</div>
+<div style={{ color: T.gold, fontSize: 10, letterSpacing: 2, marginBottom: 32 }}>DOMO BOUTIQUE</div>
+
+{cargando ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando personal...</div>
+) : error ? (
+<div style={{ color: "#E8B4AC", fontSize: 13, textAlign: "center", maxWidth: 280 }}>{error}</div>
+) : !seleccionado ? (
+<div style={{ width: "100%", maxWidth: 320 }}>
+<div style={{ fontSize: 13, color: T.ivoryMuted, marginBottom: 14, textAlign: "center" }}>¿Quién eres?</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+{staffList.map((s) => (
+<button key={s.id} onClick={() => elegirPersona(s)} style={{
+textAlign: "left", padding: "12px 16px", borderRadius: 12, cursor: "pointer",
+border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory, fontSize: 14,
+}}>
+{s.nombre} <span style={{ color: T.ivoryMuted, fontSize: 11.5 }}>· {s.rol}</span>
+</button>
+))}
+</div>
+</div>
+) : (
+<div style={{ width: "100%", maxWidth: 280, textAlign: "center" }}>
+<div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{seleccionado.nombre}</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 20 }}>Ingresa tu PIN de 4 dígitos</div>
+
+<div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 20 }}>
+{[0, 1, 2, 3].map((i) => (
+<div key={i} style={{
+width: 16, height: 16, borderRadius: "50%",
+border: `1px solid ${T.gold}`,
+background: pin.length > i ? T.gold : "transparent",
+}}></div>
+))}
+</div>
+
+{errorLogin && <div style={{ color: "#E8B4AC", fontSize: 12, marginBottom: 12 }}>{errorLogin}</div>}
+{entrando && <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 12 }}>Verificando...</div>}
+
+<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+{["1","2","3","4","5","6","7","8","9"].map((d) => (
+<button key={d} onClick={() => agregarDigito(d)} disabled={entrando} style={{
+padding: "16px 0", borderRadius: 12, fontSize: 18, fontWeight: 600, cursor: "pointer",
+border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory,
+}}>{d}</button>
+))}
+<button onClick={() => setSeleccionado(null)} style={{
+padding: "16px 0", borderRadius: 12, fontSize: 12, cursor: "pointer",
+border: `1px solid ${T.cardBorder}`, background: "transparent", color: T.ivoryMuted,
+}}>← Volver</button>
+<button onClick={() => agregarDigito("0")} disabled={entrando} style={{
+padding: "16px 0", borderRadius: 12, fontSize: 18, fontWeight: 600, cursor: "pointer",
+border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory,
+}}>0</button>
+<button onClick={borrarDigito} disabled={entrando} style={{
+padding: "16px 0", borderRadius: 12, fontSize: 14, cursor: "pointer",
+border: `1px solid ${T.cardBorder}`, background: "transparent", color: T.ivoryMuted,
+}}>⌫</button>
+</div>
+</div>
+)}
+</div>
+);
+}
+
+function DashboardRecepcion({ sesion, onLogout }) {
+const [kpis, setKpis] = useState(null);
+const [llegadas, setLlegadas] = useState([]);
+const [domos, setDomos] = useState([]);
+const [actividad, setActividad] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [error, setError] = useState(null);
+const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+const [movimiento, setMovimiento] = useState([]);
+const [diaSeleccionado, setDiaSeleccionado] = useState(0);
+const [limpieza, setLimpieza] = useState([]);
+const [staffHousekeeping, setStaffHousekeeping] = useState([]);
+const [asignando, setAsignando] = useState({});
+
+const cargarTodo = useCallback(async () => {
+try {
+const [kpisData, llegadasData, domosData, actividadData, movimientoData, limpiezaData, staffData] = await Promise.all([
+apiGet("/api/dashboard/kpis"),
+apiGet("/api/reservas/llegadas-hoy"),
+apiGet("/api/domos"),
+apiGet("/api/consumos/pendientes"),
+apiGet("/api/dashboard/movimiento"),
+apiGet("/api/domos/estado-limpieza"),
+apiGet("/api/staff"),
+]);
+setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
+setMovimiento(movimientoData.dias || []);
+setLimpieza(limpiezaData || []);
+setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
+setUltimaActualizacion(new Date()); setError(null);
+} catch (err) {
+console.error(err);
+setError("No se pudo conectar con el backend: " + API_BASE_URL);
+} finally { setCargando(false); }
+}, []);
+
+useEffect(() => {
+// Al abrir el dashboard, forzamos una sincronización con Aloha antes
+// de cargar los datos, para que el panel arranque con información
+// lo más actualizada posible (no esperamos al cron de fondo).
+fetch(`${API_BASE_URL}/api/sync/ical-now`)
+.catch(() => {})
+.finally(() => cargarTodo());
+const intervalo = setInterval(cargarTodo, REFRESH_MS);
+return () => clearInterval(intervalo);
+}, [cargarTodo]);
+
+const tomarActividad = async (id) => {
+setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "en_preparacion" } : a)));
+try { await apiPost(`/api/consumos/${id}/tomar`, { staffId: null }); }
+catch (err) { console.error(err); cargarTodo(); }
+};
 const entregarActividad = async (id) => {
-    setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "entregado" } : a)));
-    try { await apiPost(`/api/consumos/${id}/entregar`, { staffId: null }); }
-    catch (err) { console.error(err); cargarTodo(); }
-  };
- const hacerCheckin = (id) => {
-    window.location.href = `checkin.html?id=${id}`;
-  };
-  const asignarLimpieza = async (tareaId, staffId) => {
-    if (!tareaId || !staffId) return;
-    try {
-      await apiPost(`/api/tareas-limpieza/${tareaId}/asignar`, { staffId });
-      cargarTodo();
-    } catch (err) { console.error(err); }
-  };
+setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "entregado" } : a)));
+try { await apiPost(`/api/consumos/${id}/entregar`, { staffId: null }); }
+catch (err) { console.error(err); cargarTodo(); }
+};
+const hacerCheckin = (id) => {
+window.location.href = `checkin.html?id=${id}`;
+};
+const asignarLimpieza = async (tareaId, staffId) => {
+if (!tareaId || !staffId) return;
+try {
+await apiPost(`/api/tareas-limpieza/${tareaId}/asignar`, { staffId });
+cargarTodo();
+} catch (err) { console.error(err); }
+};
 
-  const domoUltimaSync = domos.map((d) => d.ultima_sincronizacion_ical).filter(Boolean).sort().pop();
+const domoUltimaSync = domos.map((d) => d.ultima_sincronizacion_ical).filter(Boolean).sort().pop();
 
-  return (
-    <div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex" }}>
-      <aside style={{ background: T.bgElevated, borderRight: `1px solid ${T.cardBorder}`, width: 232, padding: "24px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px", marginBottom: 40 }}>
-            <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-              <path d="M15 3 L27 21 H3 Z" stroke="#C9A24B" strokeWidth="1" fill="none" />
-              <path d="M15 3 L15 21 M9 12 L21 12 M6 16.5 L24 16.5" stroke="#C9A24B" strokeWidth="0.6" opacity="0.6" />
-            </svg>
-            <div>
-              <div style={{ fontSize: 15, color: T.ivory }}>Miski Samay</div>
-              <div style={{ color: T.gold, fontSize: 10, letterSpacing: 2 }}>DOMO BOUTIQUE</div>
-            </div>
-          </div>
-          <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {navItems.map((item) => {
-  const construido = item.active || !!item.href;
-  return (
-  <div key={item.label} onClick={() => { if (item.href) window.location.href = item.href; }} style={{
-    background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
-    color: item.active ? T.gold : (construido ? T.ivoryMuted : "#5C5850"),
-    border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
-    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 12, fontSize: 13.5,
-    cursor: item.href ? "pointer" : "default",
-  }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <span style={{ width: 16, textAlign: "center", opacity: construido ? 1 : 0.5 }}>{item.icon}</span>{item.label}
-    </div>
-    {!construido && (
-      <span style={{ fontSize: 9, color: "#5C5850", border: "1px solid #2A2730", borderRadius: 999, padding: "2px 7px", letterSpacing: 0.3 }}>Próximamente</span>
-    )}
-  </div>
-  );
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex" }}>
+<aside style={{ background: T.bgElevated, borderRight: `1px solid ${T.cardBorder}`, width: 232, padding: "24px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+<div>
+<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px", marginBottom: 40 }}>
+<svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+<path d="M15 3 L27 21 H3 Z" stroke="#C9A24B" strokeWidth="1" fill="none" />
+<path d="M15 3 L15 21 M9 12 L21 12 M6 16.5 L24 16.5" stroke="#C9A24B" strokeWidth="0.6" opacity="0.6" />
+</svg>
+<div>
+<div style={{ fontSize: 15, color: T.ivory }}>Miski Samay</div>
+<div style={{ color: T.gold, fontSize: 10, letterSpacing: 2 }}>DOMO BOUTIQUE</div>
+</div>
+</div>
+<nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+{navItems.map((item) => {
+const construido = item.active || !!item.href;
+return (
+<div key={item.label} onClick={() => { if (item.href) window.location.href = item.href; }} style={{
+background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
+color: item.active ? T.gold : (construido ? T.ivoryMuted : "#5C5850"),
+border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 12, fontSize: 13.5,
+cursor: item.href ? "pointer" : "default",
+}}>
+<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+<span style={{ width: 16, textAlign: "center", opacity: construido ? 1 : 0.5 }}>{item.icon}</span>{item.label}
+</div>
+{!construido && (
+<span style={{ fontSize: 9, color: "#5C5850", border: "1px solid #2A2730", borderRadius: 999, padding: "2px 7px", letterSpacing: 0.3 }}>Próximamente</span>
+)}
+</div>
+);
 })}
-          </nav>
-        </div>
-        <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ background: T.gold, color: T.bg, width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600 }}>D</div>
-          <div><div style={{ fontSize: 13 }}>Dante</div><div style={{ color: T.ivoryMuted, fontSize: 11 }}>Recepción</div></div>
-        </div>
-      </aside>
+</nav>
+</div>
+<div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+<div style={{ background: T.gold, color: T.bg, width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600 }}>{iniciales(sesion.nombre)}</div>
+<div style={{ flex: 1, minWidth: 0 }}>
+<div style={{ fontSize: 13 }}>{sesion.nombre}</div>
+<div style={{ color: T.ivoryMuted, fontSize: 11 }}>{sesion.rol}</div>
+</div>
+<button onClick={onLogout} title="Cambiar de usuario" style={{
+background: "transparent", border: "none", color: T.ivoryMuted, cursor: "pointer", fontSize: 14, flexShrink: 0,
+}}>⏻</button>
+</div>
+</aside>
 
-      <main style={{ flex: 1, padding: "32px 40px", maxWidth: 1400 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
-          <div>
-            <h1 style={{ fontSize: 26, margin: 0, color: T.ivory }}>Panel de Recepción</h1>
-            <p style={{ color: T.ivoryMuted, fontSize: 13, marginTop: 4 }}>
-              Valle Sagrado
-              {ultimaActualizacion && <span style={{ color: T.goldSoft }}> · actualizado hace {minutosDesde(ultimaActualizacion) || 0} min</span>}
-            </p>
-          </div>
-          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center" }}>🔔</div>
-        </div>
+<main style={{ flex: 1, padding: "32px 40px", maxWidth: 1400 }}>
+<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+<div>
+<h1 style={{ fontSize: 26, margin: 0, color: T.ivory }}>Panel de Recepción</h1>
+<p style={{ color: T.ivoryMuted, fontSize: 13, marginTop: 4 }}>
+Valle Sagrado
+{ultimaActualizacion && <span style={{ color: T.goldSoft }}> · actualizado hace {minutosDesde(ultimaActualizacion) || 0} min</span>}
+</p>
+</div>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center" }}>🔔</div>
+</div>
 
-        {error && (
-          <div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginBottom: 24 }}>
-            ⚠ {error}
-          </div>
-        )}
+{error && (
+<div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginBottom: 24 }}>
+⚠ {error}
+</div>
+)}
 
-        {cargando ? (
-          <div style={{ color: T.ivoryMuted, textAlign: "center", padding: "64px 0" }}>Cargando panel de recepción…</div>
-        ) : (
-          <React.Fragment>
-            
-      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Movimiento de huéspedes</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-          {movimiento.map((d, idx) => (
-            <div key={d.fecha} onClick={() => setDiaSeleccionado(idx)} style={{
-              cursor: "pointer",
-              background: idx === diaSeleccionado ? "rgba(201,162,75,0.12)" : T.bg,
-              border: idx === diaSeleccionado ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-              borderRadius: 12, padding: 10
-            }}>
-              <div style={{ fontSize: 11, color: d.offset === 0 ? T.gold : T.ivoryMuted }}>
-                {new Date(d.fecha + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric" })}
-              </div>
-              <div style={{ fontSize: 10, color: T.ivoryMuted, marginBottom: 8 }}>
-                {d.offset === 0 ? "Hoy" : d.offset < 0 ? `${-d.offset} día(s) antes` : `+${d.offset} día(s)`}
-              </div>
-              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: T.ivoryMuted }}>Llegan</span><span>{d.llegan}</span>
-              </div>
-              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: T.ivoryMuted }}>Salen</span><span>{d.salen}</span>
-              </div>
-              <div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between", borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 6 }}>
-                <span style={{ color: T.ivoryMuted }}>En casa</span><span>{d.enCasa}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+{cargando ? (
+<div style={{ color: T.ivoryMuted, textAlign: "center", padding: "64px 0" }}>Cargando panel de recepción…</div>
+) : (
+<React.Fragment>
+
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+<div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Movimiento de huéspedes</div>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+{movimiento.map((d, idx) => (
+<div key={d.fecha} onClick={() => setDiaSeleccionado(idx)} style={{
+cursor: "pointer",
+background: idx === diaSeleccionado ? "rgba(201,162,75,0.12)" : T.bg,
+border: idx === diaSeleccionado ? `1px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+borderRadius: 12, padding: 10
+}}>
+<div style={{ fontSize: 11, color: d.offset === 0 ? T.gold : T.ivoryMuted }}>
+{new Date(d.fecha + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric" })}
+</div>
+<div style={{ fontSize: 10, color: T.ivoryMuted, marginBottom: 8 }}>
+{d.offset === 0 ? "Hoy" : d.offset < 0 ? `${-d.offset} día(s) antes` : `+${d.offset} día(s)`}
+</div>
+<div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
+<span style={{ color: T.ivoryMuted }}>Llegan</span><span>{d.llegan}</span>
+</div>
+<div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between" }}>
+<span style={{ color: T.ivoryMuted }}>Salen</span><span>{d.salen}</span>
+</div>
+<div style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between", borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 6 }}>
+<span style={{ color: T.ivoryMuted }}>En casa</span><span>{d.enCasa}</span>
+</div>
+</div>
+))}
+</div>
 {movimiento[diaSeleccionado] && (
-          <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 16, paddingTop: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-            <div>
-              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Llegan ({movimiento[diaSeleccionado].detalleLlegan.length})</div>
-              {movimiento[diaSeleccionado].detalleLlegan.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
-              {movimiento[diaSeleccionado].detalleLlegan.map((h, i) => (
-                <div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Salen ({movimiento[diaSeleccionado].detalleSalen.length})</div>
-              {movimiento[diaSeleccionado].detalleSalen.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
-              {movimiento[diaSeleccionado].detalleSalen.map((h, i) => (
-                <div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>En casa ({movimiento[diaSeleccionado].detalleEnCasa.length})</div>
-              {movimiento[diaSeleccionado].detalleEnCasa.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
-             {movimiento[diaSeleccionado].detalleEnCasa.map((h, i) => (
-                <div key={i} style={{ fontSize: 12.5, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></span>
-                  {h.reserva_id && (
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
-                      <a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
-                      <a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+<div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 16, paddingTop: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+<div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Llegan ({movimiento[diaSeleccionado].detalleLlegan.length})</div>
+{movimiento[diaSeleccionado].detalleLlegan.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+{movimiento[diaSeleccionado].detalleLlegan.map((h, i) => (
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+))}
+</div>
+<div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Salen ({movimiento[diaSeleccionado].detalleSalen.length})</div>
+{movimiento[diaSeleccionado].detalleSalen.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+{movimiento[diaSeleccionado].detalleSalen.map((h, i) => (
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+))}
+</div>
+<div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>En casa ({movimiento[diaSeleccionado].detalleEnCasa.length})</div>
+{movimiento[diaSeleccionado].detalleEnCasa.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
+{movimiento[diaSeleccionado].detalleEnCasa.map((h, i) => (
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+<span>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></span>
+{h.reserva_id && (
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+<a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
+<a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
+</div>
+)}
+</div>
+))}
+</div>
+</div>
+)}
+</div>
 
-            <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>Estado de limpieza por domo</div>
-                <a href="limpieza.html" style={{ fontSize: 11.5, color: T.gold, textDecoration: "none" }}>Ver housekeeping →</a>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
-                {limpieza.length === 0 && (
-                  <div style={{ gridColumn: "1 / -1" }}><EmptyState texto="No se pudo cargar el estado de limpieza." /></div>
-                )}
-                {limpieza.map((d) => {
-                  const activa = !!d.tarea_id;
-                  const colorPunto = !activa ? T.green : (d.estado_pendiente === "pendiente" ? T.red : T.amber);
-                  const staffSeleccionado = asignando[d.domo_id] || "";
-                  return (
-                    <div key={d.domo_id} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorPunto, display: "inline-block", flexShrink: 0 }}></span>
-                        <strong style={{ fontSize: 13 }}>{d.codigo}</strong>
-                      </div>
-                      {!activa ? (
-                        <div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>Sin tareas pendientes</div>
-                      ) : (
-                        <React.Fragment>
-                          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>
-                            {d.tipo_pendiente === "salida" ? "Limpieza de salida" : "Limpieza de rutina"}
-                          </div>
-                          <div style={{ fontSize: 11, color: d.estado_pendiente === "pendiente" ? T.red : T.amber, marginBottom: 8 }}>
-                            {d.estado_pendiente === "pendiente" ? "Pendiente" : "En progreso"}
-                            {d.asignado_nombre ? ` · ${d.asignado_nombre}` : " · Sin asignar"}
-                          </div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <select value={staffSeleccionado}
-                              onChange={(e) => setAsignando((prev) => ({ ...prev, [d.domo_id]: e.target.value }))}
-                              style={{ flex: 1, minWidth: 0, background: T.card, color: T.ivory, border: `1px solid ${T.cardBorder}`, borderRadius: 8, fontSize: 11, padding: "4px 6px" }}>
-                              <option value="">Asignar a…</option>
-                              {staffHousekeeping.map((s) => (
-                                <option key={s.id} value={s.id}>{s.nombre}</option>
-                              ))}
-                            </select>
-                            <button onClick={() => asignarLimpieza(d.tarea_id, staffSeleccionado)} disabled={!staffSeleccionado}
-                              style={{
-                                padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, flexShrink: 0,
-                                cursor: staffSeleccionado ? "pointer" : "default",
-                                background: staffSeleccionado ? T.gold : "transparent",
-                                color: staffSeleccionado ? T.bg : T.ivoryMuted,
-                                border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
-                              }}>OK</button>
-                          </div>
-                        </React.Fragment>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+<div style={{ fontSize: 15, fontWeight: 600 }}>Estado de limpieza por domo</div>
+<a href="limpieza.html" style={{ fontSize: 11.5, color: T.gold, textDecoration: "none" }}>Ver housekeeping →</a>
+</div>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+{limpieza.length === 0 && (
+<div style={{ gridColumn: "1 / -1" }}><EmptyState texto="No se pudo cargar el estado de limpieza." /></div>
+)}
+{limpieza.map((d) => {
+const activa = !!d.tarea_id;
+const colorPunto = !activa ? T.green : (d.estado_pendiente === "pendiente" ? T.red : T.amber);
+const staffSeleccionado = asignando[d.domo_id] || "";
+return (
+<div key={d.domo_id} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 12 }}>
+<div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+<span style={{ width: 8, height: 8, borderRadius: "50%", background: colorPunto, display: "inline-block", flexShrink: 0 }}></span>
+<strong style={{ fontSize: 13 }}>{d.codigo}</strong>
+</div>
+{!activa ? (
+<div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>Sin tareas pendientes</div>
+) : (
+<React.Fragment>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>
+{d.tipo_pendiente === "salida" ? "Limpieza de salida" : "Limpieza de rutina"}
+</div>
+<div style={{ fontSize: 11, color: d.estado_pendiente === "pendiente" ? T.red : T.amber, marginBottom: 8 }}>
+{d.estado_pendiente === "pendiente" ? "Pendiente" : "En progreso"}
+{d.asignado_nombre ? ` · ${d.asignado_nombre}` : " · Sin asignar"}
+</div>
+<div style={{ display: "flex", gap: 6 }}>
+<select value={staffSeleccionado}
+onChange={(e) => setAsignando((prev) => ({ ...prev, [d.domo_id]: e.target.value }))}
+style={{ flex: 1, minWidth: 0, background: T.card, color: T.ivory, border: `1px solid ${T.cardBorder}`, borderRadius: 8, fontSize: 11, padding: "4px 6px" }}>
+<option value="">Asignar a…</option>
+{staffHousekeeping.map((s) => (
+<option key={s.id} value={s.id}>{s.nombre}</option>
+))}
+</select>
+<button onClick={() => asignarLimpieza(d.tarea_id, staffSeleccionado)} disabled={!staffSeleccionado}
+style={{
+padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, flexShrink: 0,
+cursor: staffSeleccionado ? "pointer" : "default",
+background: staffSeleccionado ? T.gold : "transparent",
+color: staffSeleccionado ? T.bg : T.ivoryMuted,
+border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
+}}>OK</button>
+</div>
+</React.Fragment>
+)}
+</div>
+);
+})}
+</div>
+</div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
-              <section>
-                <ColumnHeader title="Llegadas del día" count={llegadas.length} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {llegadas.length === 0 && <EmptyState texto="Sin llegadas registradas para hoy." />}
-                  {llegadas.map((l) => (
-                    <div key={l.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                        <div style={{ background: "rgba(201,162,75,0.14)", color: T.gold, border: "1px solid rgba(201,162,75,0.3)", width: 36, height: 36, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-                          {iniciales(l.nombre_completo)}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.nombre_completo}</div>
-                          <div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>{l.canal_origen} · {l.booking_id_externo}</div>
-                        </div>
-                        {!l.datos_completos && (
-                          <span style={{ background: "rgba(184,135,59,0.14)", color: T.amber, border: "1px solid rgba(184,135,59,0.3)", fontSize: 9.5, padding: "4px 8px", borderRadius: 999, flexShrink: 0 }}>Requiere OCR</span>
-                        )}
-                      </div>
-                      <div style={{ color: T.ivoryMuted, display: "flex", gap: 16, fontSize: 11.5, marginBottom: 12 }}>
-                        <span>🕐 {formatearHora(l.hora_llegada_estimada)}</span>
-                        <span>{l.adultos} adultos{l.ninos > 0 ? ` · ${l.ninos} niños` : ""}</span>
-                      </div>
-                      <button onClick={() => hacerCheckin(l.id)} disabled={l._tomado || l.estado === "check_in"}
-                        style={{
-                          width: "100%", padding: "8px 0", borderRadius: 12, fontSize: 12.5, fontWeight: 600, letterSpacing: 0.5, cursor: "pointer",
-                          background: l._tomado || l.estado === "check_in" ? "transparent" : T.gold,
-                          color: l._tomado || l.estado === "check_in" ? T.ivoryMuted : T.bg,
-                          border: l._tomado || l.estado === "check_in" ? `1px solid ${T.cardBorder}` : "none",
-                        }}>
-                        {l._tomado || l.estado === "check_in" ? "Check-in iniciado" : "CHECK-IN"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-             <section>
-  <ColumnHeader title="Actividad en vivo" count={actividad.filter((a) => a.estado === "pendiente").length} />
-  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-    {actividad.length === 0 && <EmptyState texto="No hay pedidos ni actividades pendientes." />}
-    {(() => {
-      const mapa = {};
-      actividad.forEach((a) => {
-        const clave = a.domo || "sin-domo";
-        if (!mapa[clave]) mapa[clave] = { domo: a.domo, huesped: a.huesped, pendientes: 0, enPreparacion: 0 };
-        if (a.estado === "pendiente") mapa[clave].pendientes++;
-        if (a.estado === "en_preparacion") mapa[clave].enPreparacion++;
-      });
-      return Object.values(mapa).map((g) => (
-        <a key={g.domo || "sin-domo"} href="actividad.html" style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", textDecoration: "none", color: T.ivory,
-          background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: "10px 14px",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.pendientes > 0 ? T.red : T.amber, display: "inline-block", flexShrink: 0 }}></span>
-            <strong>{g.domo ? `Domo ${g.domo}` : "Sin domo"}</strong>
-            {g.huesped ? <span style={{ color: T.ivoryMuted }}>— {g.huesped}</span> : null}
-          </div>
-          <div style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>
-            {g.pendientes > 0 ? `${g.pendientes} nuevo${g.pendientes !== 1 ? "s" : ""}` : ""}
-            {g.pendientes > 0 && g.enPreparacion > 0 ? " · " : ""}
-            {g.enPreparacion > 0 ? `${g.enPreparacion} sin atender` : ""}
-          </div>
-        </a>
-      ));
-    })()}
-  </div>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+<section>
+<ColumnHeader title="Llegadas del día" count={llegadas.length} />
+<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+{llegadas.length === 0 && <EmptyState texto="Sin llegadas registradas para hoy." />}
+{llegadas.map((l) => (
+<div key={l.id} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16 }}>
+<div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+<div style={{ background: "rgba(201,162,75,0.14)", color: T.gold, border: "1px solid rgba(201,162,75,0.3)", width: 36, height: 36, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+{iniciales(l.nombre_completo)}
+</div>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.nombre_completo}</div>
+<div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>{l.canal_origen} · {l.booking_id_externo}</div>
+</div>
+{!l.datos_completos && (
+<span style={{ background: "rgba(184,135,59,0.14)", color: T.amber, border: "1px solid rgba(184,135,59,0.3)", fontSize: 9.5, padding: "4px 8px", borderRadius: 999, flexShrink: 0 }}>Requiere OCR</span>
+)}
+</div>
+<div style={{ color: T.ivoryMuted, display: "flex", gap: 16, fontSize: 11.5, marginBottom: 12 }}>
+<span>🕐 {formatearHora(l.hora_llegada_estimada)}</span>
+<span>{l.adultos} adultos{l.ninos > 0 ? ` · ${l.ninos} niños` : ""}</span>
+</div>
+<button onClick={() => hacerCheckin(l.id)} disabled={l._tomado || l.estado === "check_in"}
+style={{
+width: "100%", padding: "8px 0", borderRadius: 12, fontSize: 12.5, fontWeight: 600, letterSpacing: 0.5, cursor: "pointer",
+background: l._tomado || l.estado === "check_in" ? "transparent" : T.gold,
+color: l._tomado || l.estado === "check_in" ? T.ivoryMuted : T.bg,
+border: l._tomado || l.estado === "check_in" ? `1px solid ${T.cardBorder}` : "none",
+}}>
+{l._tomado || l.estado === "check_in" ? "Check-in iniciado" : "CHECK-IN"}
+</button>
+</div>
+))}
+</div>
 </section>
-             <section>
-             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
-                  <span>🌙</span>
-                  <p style={{ color: T.ivoryMuted, fontSize: 11.5, margin: 0 }}>
-                    {domoUltimaSync ? `Sincronización con Aloha (iCal) activa — última actualización hace ${minutosDesde(domoUltimaSync)} min.` : "Sin sincronización iCal registrada todavía."}
-                  </p>
-                </div>
-              </section>
-            </div>
-          </React.Fragment>
-        )}
-      </main>
-    </div>
-  );
+
+<section>
+<ColumnHeader title="Actividad en vivo" count={actividad.filter((a) => a.estado === "pendiente").length} />
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+{actividad.length === 0 && <EmptyState texto="No hay pedidos ni actividades pendientes." />}
+{(() => {
+const mapa = {};
+actividad.forEach((a) => {
+const clave = a.domo || "sin-domo";
+if (!mapa[clave]) mapa[clave] = { domo: a.domo, huesped: a.huesped, pendientes: 0, enPreparacion: 0 };
+if (a.estado === "pendiente") mapa[clave].pendientes++;
+if (a.estado === "en_preparacion") mapa[clave].enPreparacion++;
+});
+return Object.values(mapa).map((g) => (
+<a key={g.domo || "sin-domo"} href="actividad.html" style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", textDecoration: "none", color: T.ivory,
+background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: "10px 14px",
+}}>
+<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+<span style={{ width: 8, height: 8, borderRadius: "50%", background: g.pendientes > 0 ? T.red : T.amber, display: "inline-block", flexShrink: 0 }}></span>
+<strong>{g.domo ? `Domo ${g.domo}` : "Sin domo"}</strong>
+{g.huesped ? <span style={{ color: T.ivoryMuted }}>— {g.huesped}</span> : null}
+</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>
+{g.pendientes > 0 ? `${g.pendientes} nuevo${g.pendientes !== 1 ? "s" : ""}` : ""}
+{g.pendientes > 0 && g.enPreparacion > 0 ? " · " : ""}
+{g.enPreparacion > 0 ? `${g.enPreparacion} sin atender` : ""}
+</div>
+</a>
+));
+})()}
+</div>
+</section>
+<section>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
+<span>🌙</span>
+<p style={{ color: T.ivoryMuted, fontSize: 11.5, margin: 0 }}>
+{domoUltimaSync ? `Sincronización con Aloha (iCal) activa — última actualización hace ${minutosDesde(domoUltimaSync)} min.` : "Sin sincronización iCal registrada todavía."}
+</p>
+</div>
+</section>
+</div>
+</React.Fragment>
+)}
+</main>
+</div>
+);
 }
 
 function KpiCard({ label, value, accent }) {
-  return (
-    <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-        <span style={{ color: T.ivoryMuted, fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 26, color: T.ivory }}>{value}</div>
-    </div>
-  );
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20 }}>
+<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+<span style={{ color: T.ivoryMuted, fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
+</div>
+<div style={{ fontSize: 26, color: T.ivory }}>{value}</div>
+</div>
+);
 }
 function ColumnHeader({ title, count }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
-      <h2 style={{ fontSize: 15, color: T.ivory, margin: 0 }}>{title}</h2>
-      <span style={{ color: T.goldSoft, fontSize: 11 }}>{count}</span>
-    </div>
-  );
+return (
+<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
+<h2 style={{ fontSize: 15, color: T.ivory, margin: 0 }}>{title}</h2>
+<span style={{ color: T.goldSoft, fontSize: 11 }}>{count}</span>
+</div>
+);
 }
 function EmptyState({ texto }) {
-  return <div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 16, padding: 24, fontSize: 12, textAlign: "center" }}>{texto}</div>;
+return <div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 16, padding: 24, fontSize: 12, textAlign: "center" }}>{texto}</div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<DashboardRecepcion />);
+function AppGate() {
+const [sesion, setSesion] = useState(() => cargarSesion());
+if (!sesion) {
+return <LoginScreen onLogin={setSesion} />;
+}
+return <DashboardRecepcion sesion={sesion} onLogout={() => { cerrarSesion(); setSesion(null); }} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
 </script>
 </body>
 </html>
