@@ -49,6 +49,9 @@ const items = [
 if (sesion && sesion.puede_editar_menu) {
 items.splice(items.length - 1, 0, { icon: "🍽", label: "Menú", href: "menu.html" });
 }
+if (sesion && sesion.puede_gestionar_personal) {
+items.splice(items.length - 1, 0, { icon: "👥", label: "Personal", href: "personal.html" });
+}
 return items;
 }
 
