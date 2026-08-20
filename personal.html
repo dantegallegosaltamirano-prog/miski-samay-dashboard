@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Personal</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71", red: "#A83E32",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
+const NUEVO_ROL = "__nuevo__";
+
+function cargarSesion() {
+try {
+const raw = localStorage.getItem(SESION_KEY);
+return raw ? JSON.parse(raw) : null;
+} catch { return null; }
+}
+
+async function apiGet(path) {
+const res = await fetch(`${API_BASE_URL}${path}`);
+if (!res.ok) {
+const body = await res.json().catch(() => ({}));
+throw new Error(body.error || `${path} respondió ${res.status}`);
+}
+return res.json();
+}
+async function apiPost(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, {
+method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+const data = await res.json().catch(() => ({}));
+if (!res.ok) throw new Error(data.error || `${path} respondió ${res.status}`);
+return data;
+}
+async function apiPut(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, {
+method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+const data = await res.json().catch(() => ({}));
+if (!res.ok) throw new Error(data.error || `${path} respondió ${res.status}`);
+return data;
+}
+
+function pinAlAzar() {
+return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+// Formulario para crear o editar a una persona del staff.
+function FormularioPersonal({ persona, roles, sesion, onGuardado, onCancelar }) {
+const esEdicion = !!persona?.id;
+const [nombre, setNombre] = useState(persona?.nombre || "");
+const [rol, setRol] = useState(persona?.rol || (roles[0] || ""));
+const [rolNuevo, setRolNuevo] = useState("");
+const [telefono, setTelefono] = useState(persona?.telefono || "");
+const [pin, setPin] = useState(persona?.pin || (esEdicion ? "" : pinAlAzar()));
+const [haceHousekeeping, setHaceHousekeeping] = useState(!!persona?.hace_housekeeping);
+const [puedeEditarMenu, setPuedeEditarMenu] = useState(!!persona?.puede_editar_menu);
+const [puedeGestionarPersonal, setPuedeGestionarPersonal] = useState(!!persona?.puede_gestionar_personal);
+const [activo, setActivo] = useState(persona?.activo != null ? persona.activo : true);
+const [guardando, setGuardando] = useState(false);
+const [error, setError] = useState(null);
+
+const usandoRolNuevo = rol === NUEVO_ROL;
+
+async function guardar() {
+const rolFinal = usandoRolNuevo ? rolNuevo.trim() : rol;
+if (!nombre.trim()) { setError("Escribe el nombre."); return; }
+if (!rolFinal) { setError("Elige o escribe un rol."); return; }
+if (!/^\d{4}$/.test(pin)) { setError("El PIN debe tener exactamente 4 dígitos."); return; }
+
+setGuardando(true);
+setError(null);
+try {
+const payload = {
+nombre: nombre.trim(), rol: rolFinal, telefono: telefono.trim() || null,
+hace_housekeeping: haceHousekeeping, pin,
+puede_editar_menu: puedeEditarMenu, puede_gestionar_personal: puedeGestionarPersonal,
+};
+if (esEdicion) {
+await apiPut(`/api/staff/${persona.id}`, { ...payload, activo });
+} else {
+await apiPost(`/api/staff`, payload);
+}
+onGuardado();
+} catch (err) {
+setError(err.message);
+} finally {
+setGuardando(false);
+}
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20, marginBottom: 20 }}>
+<div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+{esEdicion ? `Editar: ${persona.nombre}` : "Nuevo integrante del staff"}
+</div>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Nombre</label>
+<input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: María" style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+</div>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Rol</label>
+<select value={rol} onChange={(e) => setRol(e.target.value)} style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}}>
+{roles.map((r) => <option key={r} value={r}>{r}</option>)}
+<option value={NUEVO_ROL}>＋ Nuevo rol…</option>
+</select>
+{usandoRolNuevo && (
+<input value={rolNuevo} onChange={(e) => setRolNuevo(e.target.value)}
+placeholder="Nombre del rol nuevo" style={{
+width: "100%", marginTop: 8, background: T.bg, color: T.ivory, border: `1px solid ${T.gold}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+)}
+</div>
+</div>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>Celular (para WhatsApp)</label>
+<input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Ej: 987654321" style={{
+width: "100%", background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13,
+}} />
+</div>
+<div>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted, display: "block", marginBottom: 4 }}>PIN de acceso (4 dígitos)</label>
+<div style={{ display: "flex", gap: 8 }}>
+<input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+inputMode="numeric" style={{
+flex: 1, background: T.bg, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 8, padding: "9px 10px", fontSize: 13, letterSpacing: 2,
+}} />
+<button type="button" onClick={() => setPin(pinAlAzar())} title="Generar otro" style={{
+background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+borderRadius: 8, padding: "0 10px", fontSize: 13, cursor: "pointer",
+}}>🎲</button>
+</div>
+</div>
+</div>
+
+<div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={haceHousekeeping} onChange={(e) => setHaceHousekeeping(e.target.checked)} />
+Hace tareas de limpieza (aparece para asignarle housekeeping)
+</label>
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={puedeEditarMenu} onChange={(e) => setPuedeEditarMenu(e.target.checked)} />
+Puede editar el menú de Restaurant/Bar
+</label>
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={puedeGestionarPersonal} onChange={(e) => setPuedeGestionarPersonal(e.target.checked)} />
+Puede agregar/retirar personal (como esta pantalla)
+</label>
+{esEdicion && persona.id === sesion.id && puedeGestionarPersonal === false && (
+<div style={{ fontSize: 11.5, color: "#E8B4AC" }}>
+⚠ Te estás quitando este permiso a ti mismo — no podrás volver a entrar aquí hasta que otra persona con acceso te lo reactive.
+</div>
+)}
+{esEdicion && (
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+Activo (si lo desmarcas, ya no podrá iniciar sesión — es la forma de "retirarlo" sin borrar su historial)
+</label>
+)}
+</div>
+
+{error && <div style={{ color: "#E8B4AC", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+
+<div style={{ display: "flex", gap: 10 }}>
+<button onClick={guardar} disabled={guardando} style={{
+background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "10px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+}}>
+{guardando ? "Guardando..." : "Guardar"}
+</button>
+<button onClick={onCancelar} style={{
+background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+padding: "10px 18px", fontSize: 13.5, cursor: "pointer",
+}}>
+Cancelar
+</button>
+</div>
+</div>
+);
+}
+
+function FilaPersona({ persona, onEditar }) {
+return (
+<div style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: "12px 16px",
+opacity: persona.activo ? 1 : 0.55,
+}}>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 13.5, fontWeight: 600 }}>
+{persona.nombre} {!persona.activo && <span style={{ fontSize: 10.5, color: T.ivoryMuted, fontWeight: 400 }}>(dado de baja)</span>}
+</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
+<span>{persona.rol}</span>
+{persona.hace_housekeeping && <span>· 🧹 Limpieza</span>}
+{persona.puede_editar_menu && <span>· 🍽 Menú</span>}
+{persona.puede_gestionar_personal && <span>· 👥 Personal</span>}
+</div>
+</div>
+<div style={{ fontSize: 13, color: T.gold, fontFamily: "monospace", letterSpacing: 1, flexShrink: 0 }}>{persona.pin}</div>
+<button onClick={() => onEditar(persona)} style={{
+background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory,
+borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer", flexShrink: 0,
+}}>
+Editar
+</button>
+</div>
+);
+}
+
+function PantallaPersonal({ sesion }) {
+const [staff, setStaff] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [error, setError] = useState(null);
+const [editando, setEditando] = useState(null); // null | {} (nuevo) | persona (editar)
+
+async function recargar() {
+try {
+const data = await apiGet("/api/staff/admin");
+setStaff(Array.isArray(data) ? data : []);
+setError(null);
+} catch (err) {
+setError(err.message);
+} finally {
+setCargando(false);
+}
+}
+
+useEffect(() => { recargar(); }, []);
+
+const roles = [...new Set(staff.map(s => s.rol))];
+const activos = staff.filter(s => s.activo);
+const inactivos = staff.filter(s => !s.activo);
+
+function alGuardar() {
+setEditando(null);
+recargar();
+}
+
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", padding: "32px 40px" }}>
+<div style={{ maxWidth: 800, margin: "0 auto" }}>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 24px" }}>
+<h1 style={{ fontSize: 22, margin: 0 }}>Personal</h1>
+{!editando && (
+<button onClick={() => setEditando({})} style={{
+background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+}}>
+＋ Agregar persona
+</button>
+)}
+</div>
+
+{error && (
+<div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginBottom: 20 }}>
+⚠ {error}
+</div>
+)}
+
+{editando && (
+<FormularioPersonal
+persona={editando.id ? editando : null}
+roles={roles.length > 0 ? roles : ["recepcion", "cocina", "housekeeping", "administracion", "gerencia"]}
+sesion={sesion}
+onGuardado={alGuardar}
+onCancelar={() => setEditando(null)}
+/>
+)}
+
+{cargando ? (
+<div style={{ color: T.ivoryMuted, textAlign: "center", padding: "48px 0" }}>Cargando personal...</div>
+) : (
+<React.Fragment>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: T.ivoryMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+Activos ({activos.length})
+</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+{activos.map((p) => <FilaPersona key={p.id} persona={p} onEditar={setEditando} />)}
+</div>
+
+{inactivos.length > 0 && (
+<React.Fragment>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: T.ivoryMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+Dados de baja ({inactivos.length})
+</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+{inactivos.map((p) => <FilaPersona key={p.id} persona={p} onEditar={setEditando} />)}
+</div>
+</React.Fragment>
+)}
+</React.Fragment>
+)}
+</div>
+</div>
+);
+}
+
+function AppGate() {
+const sesion = cargarSesion();
+if (!sesion) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>Primero debes iniciar sesión.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Ir al panel principal</a>
+</div>
+);
+}
+if (!sesion.puede_gestionar_personal) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>No tienes permiso para gestionar personal.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Volver al panel</a>
+</div>
+);
+}
+return <PantallaPersonal sesion={sesion} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
+</script>
+</body>
+</html>
