@@ -8,23 +8,23 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
 
-  .layout-wrap { display: flex; gap: 24px; max-width: 900px; margin: 0 auto; justify-content: center; align-items: flex-start; }
-  .main-col { flex: 0 1 560px; min-width: 0; width: 100%; }
-  .cart-col { flex: 0 0 300px; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.layout-wrap { display: flex; gap: 24px; max-width: 900px; margin: 0 auto; justify-content: center; align-items: flex-start; }
+.main-col { flex: 0 1 560px; min-width: 0; width: 100%; }
+.cart-col { flex: 0 0 300px; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
 
-  .page-wrap { padding: 24px 20px 40px; }
+.page-wrap { padding: 24px 20px 40px; }
 
-  @media (max-width: 860px) {
-    .layout-wrap { flex-direction: column; }
-    .cart-col {
-      position: fixed; left: 0; right: 0; bottom: 0; top: auto;
-      width: 100%; max-height: 68vh; border-radius: 18px 18px 0 0; z-index: 50;
-    }
-    .page-wrap.has-cart { padding-bottom: 64vh; }
-  }
+@media (max-width: 860px) {
+.layout-wrap { flex-direction: column; }
+.cart-col {
+position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+width: 100%; max-height: 68vh; border-radius: 18px 18px 0 0; z-index: 50;
+}
+.page-wrap.has-cart { padding-bottom: 64vh; }
+}
 </style>
 </head>
 <body>
@@ -34,312 +34,318 @@
 const { useState } = React;
 
 const T = {
-  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
-  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71"
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71"
 };
 
-const CATEGORIAS = [
-  { label: "Restaurant", valor: "gastronomia", icono: "🍽️" },
-  { label: "Bar", valor: "bebidas", icono: "🍸" },
-  { label: "Lavandería", valor: "lavanderia", icono: "🧺" },
-  { label: "Otros", valor: "otros", icono: "📦" },
-];
-
+// Etiquetas e íconos "bonitos" para las categorías originales. Cualquier
+// categoría nueva que se cree desde menu.html usa su propio nombre tal
+// cual como etiqueta, y el ícono genérico 📦.
+const ETIQUETA_CATEGORIA = {
+gastronomia: "Restaurant", bebidas: "Bar", lavanderia: "Lavandería", otros: "Otros",
+};
+const ICONO_CATEGORIA = {
+gastronomia: "🍽️", bebidas: "🍸", lavanderia: "🧺", otros: "📦",
+};
+function etiquetaCategoria(valor) {
+return ETIQUETA_CATEGORIA[valor] || (valor.charAt(0).toUpperCase() + valor.slice(1));
+}
 function iconoCategoria(valor) {
-  const c = CATEGORIAS.find(c => c.valor === valor);
-  return c ? c.icono : "📦";
+return ICONO_CATEGORIA[valor] || "📦";
 }
 
 const idBloqueado = new URLSearchParams(window.location.search).get("id");
 
 function ConsumoRapido() {
-  const [huespedes, setHuespedes] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [reservaSel, setReservaSel] = useState(null);
-  const [noEncontrado, setNoEncontrado] = useState(false);
+const [huespedes, setHuespedes] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [reservaSel, setReservaSel] = useState(null);
+const [noEncontrado, setNoEncontrado] = useState(false);
 
-  const [categoriaActiva, setCategoriaActiva] = useState(null);
-  const [cacheProductos, setCacheProductos] = useState({});
-  const [cargandoProductos, setCargandoProductos] = useState(false);
+const [categoriaActiva, setCategoriaActiva] = useState(null);
+const [productos, setProductos] = useState([]);
+const [cargandoProductos, setCargandoProductos] = useState(true);
 
-  const [carrito, setCarrito] = useState({});
+const [carrito, setCarrito] = useState({});
 
-  const [enviando, setEnviando] = useState(false);
-  const [ultimoOk, setUltimoOk] = useState(null);
+const [enviando, setEnviando] = useState(false);
+const [ultimoOk, setUltimoOk] = useState(null);
 
-  React.useEffect(() => {
-    fetch(`https://miski-samay-backend-production.up.railway.app/api/domos/estado-hoy`)
-      .then(r => r.json())
-      .then(data => {
-        const lista = Array.isArray(data) ? data : [];
-        setHuespedes(lista);
-        if (idBloqueado) {
-          const encontrado = lista.find(h => h.reserva_id === idBloqueado);
-          if (encontrado) setReservaSel(encontrado);
-          else setNoEncontrado(true);
-        }
-        setCargando(false);
-      })
-      .catch(() => setCargando(false));
-  }, []);
+React.useEffect(() => {
+fetch(`https://miski-samay-backend-production.up.railway.app/api/domos/estado-hoy`)
+.then(r => r.json())
+.then(data => {
+const lista = Array.isArray(data) ? data : [];
+setHuespedes(lista);
+if (idBloqueado) {
+const encontrado = lista.find(h => h.reserva_id === idBloqueado);
+if (encontrado) setReservaSel(encontrado);
+else setNoEncontrado(true);
+}
+setCargando(false);
+})
+.catch(() => setCargando(false));
 
-  function elegirCategoria(valor) {
-    setCategoriaActiva(valor);
-    if (cacheProductos[valor]) return;
-    setCargandoProductos(true);
-    fetch(`https://miski-samay-backend-production.up.railway.app/api/productos?categoria=${valor}`)
-      .then(r => r.json())
-      .then(data => {
-        setCacheProductos(prev => ({ ...prev, [valor]: Array.isArray(data) ? data : [] }));
-        setCargandoProductos(false);
-      })
-      .catch(() => {
-        setCacheProductos(prev => ({ ...prev, [valor]: [] }));
-        setCargandoProductos(false);
-      });
-  }
+// Traemos TODOS los productos activos de una sola vez. Las categorías
+// (para las pestañas) se calculan de lo que realmente exista, así que
+// una categoría nueva creada desde menu.html aparece sola, sin tocar
+// este archivo.
+fetch(`https://miski-samay-backend-production.up.railway.app/api/productos`)
+.then(r => r.json())
+.then(data => {
+setProductos(Array.isArray(data) ? data : []);
+setCargandoProductos(false);
+})
+.catch(() => setCargandoProductos(false));
+}, []);
 
-  function cambiarCantidad(producto, delta) {
-    setCarrito(prev => {
-      const actual = prev[producto.id]?.cantidad || 0;
-      const nueva = Math.max(0, actual + delta);
-      const copia = { ...prev };
-      if (nueva === 0) {
-        delete copia[producto.id];
-      } else {
-        copia[producto.id] = { producto, cantidad: nueva };
-      }
-      return copia;
-    });
-  }
+const categoriasDisponibles = [...new Set(productos.map(p => p.categoria))];
 
-  function eliminarItem(productoId) {
-    setCarrito(prev => {
-      const copia = { ...prev };
-      delete copia[productoId];
-      return copia;
-    });
-  }
+function cambiarCantidad(producto, delta) {
+setCarrito(prev => {
+const actual = prev[producto.id]?.cantidad || 0;
+const nueva = Math.max(0, actual + delta);
+const copia = { ...prev };
+if (nueva === 0) {
+delete copia[producto.id];
+} else {
+copia[producto.id] = { producto, cantidad: nueva };
+}
+return copia;
+});
+}
 
-  const lineasCarrito = Object.values(carrito);
-  const totalCarrito = lineasCarrito.reduce((acc, l) => acc + l.cantidad * Number(l.producto.precio), 0);
-  const cantidadItems = lineasCarrito.reduce((acc, l) => acc + l.cantidad, 0);
+function eliminarItem(productoId) {
+setCarrito(prev => {
+const copia = { ...prev };
+delete copia[productoId];
+return copia;
+});
+}
 
-  async function cargar() {
-    if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
-    if (lineasCarrito.length === 0) { alert("Selecciona al menos un producto."); return; }
+const lineasCarrito = Object.values(carrito);
+const totalCarrito = lineasCarrito.reduce((acc, l) => acc + l.cantidad * Number(l.producto.precio), 0);
+const cantidadItems = lineasCarrito.reduce((acc, l) => acc + l.cantidad, 0);
 
-    setEnviando(true);
-    setUltimoOk(null);
+async function cargar() {
+if (!reservaSel) { alert("Selecciona un huésped/domo."); return; }
+if (lineasCarrito.length === 0) { alert("Selecciona al menos un producto."); return; }
 
-    try {
-      for (const linea of lineasCarrito) {
-        const resp = await fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaSel.reserva_id}/consumos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            categoria: linea.producto.categoria,
-            descripcion: `${linea.cantidad} x ${linea.producto.nombre}`,
-            monto: linea.cantidad * Number(linea.producto.precio),
-          }),
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error);
-      }
+setEnviando(true);
+setUltimoOk(null);
 
-      setUltimoOk({
-        domo: reservaSel.codigo,
-        nombre: reservaSel.nombre_completo,
-        items: lineasCarrito,
-        total: totalCarrito,
-      });
-      setCarrito({});
-    } catch (err) {
-      alert("Error: " + err.message);
-    } finally {
-      setEnviando(false);
-    }
-  }
+try {
+for (const linea of lineasCarrito) {
+const resp = await fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaSel.reserva_id}/consumos`, {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+categoria: linea.producto.categoria,
+descripcion: `${linea.cantidad} x ${linea.producto.nombre}`,
+monto: linea.cantidad * Number(linea.producto.precio),
+}),
+});
+const data = await resp.json();
+if (data.error) throw new Error(data.error);
+}
 
-  const productosActivos = categoriaActiva ? (cacheProductos[categoriaActiva] || []) : [];
-  const hayCarrito = cantidadItems > 0;
+setUltimoOk({
+domo: reservaSel.codigo,
+nombre: reservaSel.nombre_completo,
+items: lineasCarrito,
+total: totalCarrito,
+});
+setCarrito({});
+} catch (err) {
+alert("Error: " + err.message);
+} finally {
+setEnviando(false);
+}
+}
 
-  return (
-    <div className={`page-wrap${hayCarrito ? " has-cart" : ""}`} style={{ minHeight: "100vh", background: T.bg, color: T.ivory }}>
-      <div className="layout-wrap">
+const productosActivos = categoriaActiva ? productos.filter(p => p.categoria === categoriaActiva) : [];
+const hayCarrito = cantidadItems > 0;
 
-        <div className="main-col">
+return (
+<div className={`page-wrap${hayCarrito ? " has-cart" : ""}`} style={{ minHeight: "100vh", background: T.bg, color: T.ivory }}>
+<div className="layout-wrap">
 
-          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
-          <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Cargo rápido</div>
+<div className="main-col">
 
-          {ultimoOk && (
-            <div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
-              ✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo}
-              <div style={{ color: T.ivoryMuted, marginTop: 4 }}>
-                {ultimoOk.items.map((l, i) => (
-                  <div key={i}>{l.cantidad} x {l.producto.nombre} — S/ {(l.cantidad * Number(l.producto.precio)).toFixed(2)}</div>
-                ))}
-              </div>
-              <div style={{ marginTop: 4, fontWeight: 700 }}>Total: S/ {ultimoOk.total.toFixed(2)}</div>
-            </div>
-          )}
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+<div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Cargo rápido</div>
 
-          {idBloqueado ? (
-            <div style={{ marginBottom: 20 }}>
-              {cargando ? (
-                <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando huésped...</div>
-              ) : noEncontrado ? (
-                <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
-                  No se encontró esta reserva entre los huéspedes en casa hoy. Verifica el link o usa el panel para elegir manualmente.
-                </div>
-              ) : reservaSel && (
-                <div style={{ background: "rgba(201,162,75,0.10)", border: `2px solid ${T.gold}`, borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 11, color: T.ivoryMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Pedido para</div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{reservaSel.codigo} — {reservaSel.nombre_completo || "Por confirmar"}</div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <React.Fragment>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
-              {cargando ? (
-                <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
-              ) : huespedes.length === 0 ? (
-                <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                  {huespedes.map((h) => (
-                    <button key={h.reserva_id} onClick={() => setReservaSel(h)} style={{
-                      textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                      border: reservaSel?.reserva_id === h.reserva_id ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                      background: reservaSel?.reserva_id === h.reserva_id ? "rgba(201,162,75,0.15)" : T.card,
-                      color: T.ivory, fontSize: 13.5,
-                    }}>
-                      <strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </React.Fragment>
-          )}
+{ultimoOk && (
+<div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
+✓ Cargado: {ultimoOk.nombre} · Domo {ultimoOk.domo}
+<div style={{ color: T.ivoryMuted, marginTop: 4 }}>
+{ultimoOk.items.map((l, i) => (
+<div key={i}>{l.cantidad} x {l.producto.nombre} — S/ {(l.cantidad * Number(l.producto.precio)).toFixed(2)}</div>
+))}
+</div>
+<div style={{ marginTop: 4, fontWeight: 700 }}>Total: S/ {ultimoOk.total.toFixed(2)}</div>
+</div>
+)}
 
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-            {CATEGORIAS.map((c) => {
-              const activa = categoriaActiva === c.valor;
-              return (
-                <button key={c.valor} onClick={() => elegirCategoria(c.valor)} style={{
-                  padding: "14px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
-                  border: activa ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                  background: activa ? "rgba(201,162,75,0.15)" : T.card,
-                  color: activa ? T.gold : T.ivory,
-                }}>
-                  {c.icono} {c.label}
-                </button>
-              );
-            })}
-          </div>
+{idBloqueado ? (
+<div style={{ marginBottom: 20 }}>
+{cargando ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando huésped...</div>
+) : noEncontrado ? (
+<div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+No se encontró esta reserva entre los huéspedes en casa hoy. Verifica el link o usa el panel para elegir manualmente.
+</div>
+) : reservaSel && (
+<div style={{ background: "rgba(201,162,75,0.10)", border: `2px solid ${T.gold}`, borderRadius: 10, padding: "12px 14px" }}>
+<div style={{ fontSize: 11, color: T.ivoryMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Pedido para</div>
+<div style={{ fontSize: 15, fontWeight: 700 }}>{reservaSel.codigo} — {reservaSel.nombre_completo || "Por confirmar"}</div>
+</div>
+)}
+</div>
+) : (
+<React.Fragment>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Selecciona huésped</div>
+{cargando ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
+) : huespedes.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
+) : (
+<div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+{huespedes.map((h) => (
+<button key={h.reserva_id} onClick={() => setReservaSel(h)} style={{
+textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+border: reservaSel?.reserva_id === h.reserva_id ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+background: reservaSel?.reserva_id === h.reserva_id ? "rgba(201,162,75,0.15)" : T.card,
+color: T.ivory, fontSize: 13.5,
+}}>
+<strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}
+</button>
+))}
+</div>
+)}
+</React.Fragment>
+)}
 
-          {categoriaActiva && (
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos — {CATEGORIAS.find(c => c.valor === categoriaActiva).label}</div>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>2. Categoría</div>
+{cargandoProductos ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando categorías...</div>
+) : categoriasDisponibles.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en el menú todavía.</div>
+) : (
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+{categoriasDisponibles.map((valor) => {
+const activa = categoriaActiva === valor;
+return (
+<button key={valor} onClick={() => setCategoriaActiva(valor)} style={{
+padding: "14px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
+border: activa ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+background: activa ? "rgba(201,162,75,0.15)" : T.card,
+color: activa ? T.gold : T.ivory,
+}}>
+{iconoCategoria(valor)} {etiquetaCategoria(valor)}
+</button>
+);
+})}
+</div>
+)}
 
-              {cargandoProductos ? (
-                <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando productos...</div>
-              ) : productosActivos.length === 0 ? (
-                <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en esta categoría.</div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
-                  {productosActivos.map((p) => {
-                    const cant = carrito[p.id]?.cantidad || 0;
-                    return (
-                      <div key={p.id} style={{
-                        display: "flex", flexDirection: "column", justifyContent: "space-between",
-                        padding: "12px", borderRadius: 12, minHeight: 150,
-                        border: cant > 0 ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-                        background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 20, marginBottom: 4 }}>{iconoCategoria(p.categoria)}</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.25, marginBottom: 3 }}>{p.nombre}</div>
-                          {p.descripcion && (
-                            <div style={{ fontSize: 11, color: T.ivoryMuted, lineHeight: 1.3, marginBottom: 6 }}>{p.descripcion}</div>
-                          )}
-                          <div style={{ fontSize: 13, color: T.gold, fontWeight: 700 }}>S/ {Number(p.precio).toFixed(2)}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 10 }}>
-                          <button onClick={() => cambiarCantidad(p, -1)} disabled={cant === 0} style={{
-                            width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-                            background: T.bg, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
-                            opacity: cant === 0 ? 0.4 : 1,
-                          }}>–</button>
-                          <div style={{ width: 18, textAlign: "center", fontSize: 14, fontWeight: 700 }}>{cant}</div>
-                          <button onClick={() => cambiarCantidad(p, 1)} style={{
-                            width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-                            background: T.bg, color: T.ivory, fontSize: 16, cursor: "pointer",
-                          }}>+</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+{categoriaActiva && (
+<div>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos — {etiquetaCategoria(categoriaActiva)}</div>
 
-        </div>
+{productosActivos.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en esta categoría.</div>
+) : (
+<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+{productosActivos.map((p) => {
+const cant = carrito[p.id]?.cantidad || 0;
+return (
+<div key={p.id} style={{
+display: "flex", flexDirection: "column", justifyContent: "space-between",
+padding: "12px", borderRadius: 12, minHeight: 150,
+border: cant > 0 ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
+}}>
+<div>
+<div style={{ fontSize: 20, marginBottom: 4 }}>{iconoCategoria(p.categoria)}</div>
+<div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.25, marginBottom: 3 }}>{p.nombre}</div>
+{p.descripcion && (
+<div style={{ fontSize: 11, color: T.ivoryMuted, lineHeight: 1.3, marginBottom: 6 }}>{p.descripcion}</div>
+)}
+<div style={{ fontSize: 13, color: T.gold, fontWeight: 700 }}>S/ {Number(p.precio).toFixed(2)}</div>
+</div>
+<div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 10 }}>
+<button onClick={() => cambiarCantidad(p, -1)} disabled={cant === 0} style={{
+width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
+opacity: cant === 0 ? 0.4 : 1,
+}}>–</button>
+<div style={{ width: 18, textAlign: "center", fontSize: 14, fontWeight: 700 }}>{cant}</div>
+<button onClick={() => cambiarCantidad(p, 1)} style={{
+width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 16, cursor: "pointer",
+}}>+</button>
+</div>
+</div>
+);
+})}
+</div>
+)}
+</div>
+)}
 
-        {hayCarrito && (
-          <div className="cart-col" style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: "16px 16px 14px" }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>🛒 Tu pedido</span>
-              <span style={{ color: T.ivoryMuted, fontWeight: 500, fontSize: 11.5 }}>{cantidadItems} item{cantidadItems !== 1 ? "s" : ""}</span>
-            </div>
+</div>
 
-            <div style={{ maxHeight: 280, overflowY: "auto", marginBottom: 10 }}>
-              {lineasCarrito.map((linea) => (
-                <div key={linea.producto.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 0", borderBottom: `1px solid ${T.cardBorder}` }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{linea.producto.nombre}</div>
-                    <div style={{ fontSize: 11, color: T.ivoryMuted }}>{linea.cantidad} x S/ {Number(linea.producto.precio).toFixed(2)} = S/ {(linea.cantidad * Number(linea.producto.precio)).toFixed(2)}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <button onClick={() => cambiarCantidad(linea.producto, -1)} style={{
-                      width: 22, height: 22, borderRadius: 6, border: `1px solid ${T.cardBorder}`,
-                      background: T.bg, color: T.ivory, fontSize: 13, cursor: "pointer", lineHeight: 1,
-                    }}>–</button>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{linea.cantidad}</span>
-                    <button onClick={() => cambiarCantidad(linea.producto, 1)} style={{
-                      width: 22, height: 22, borderRadius: 6, border: `1px solid ${T.cardBorder}`,
-                      background: T.bg, color: T.ivory, fontSize: 13, cursor: "pointer", lineHeight: 1,
-                    }}>+</button>
-                    <button onClick={() => eliminarItem(linea.producto.id)} title="Quitar" style={{
-                      width: 22, height: 22, borderRadius: 6, border: "none",
-                      background: "transparent", color: "#D98A7D", fontSize: 14, cursor: "pointer", marginLeft: 2,
-                    }}>✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+{hayCarrito && (
+<div className="cart-col" style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: "16px 16px 14px" }}>
+<div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+<span>🛒 Tu pedido</span>
+<span style={{ color: T.ivoryMuted, fontWeight: 500, fontSize: 11.5 }}>{cantidadItems} item{cantidadItems !== 1 ? "s" : ""}</span>
+</div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, marginBottom: 12, paddingTop: 8, borderTop: `1px solid ${T.cardBorder}` }}>
-              <span>Total</span>
-              <span style={{ color: T.gold }}>S/ {totalCarrito.toFixed(2)}</span>
-            </div>
+<div style={{ maxHeight: 280, overflowY: "auto", marginBottom: 10 }}>
+{lineasCarrito.map((linea) => (
+<div key={linea.producto.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 0", borderBottom: `1px solid ${T.cardBorder}` }}>
+<div style={{ flex: 1, minWidth: 0 }}>
+<div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{linea.producto.nombre}</div>
+<div style={{ fontSize: 11, color: T.ivoryMuted }}>{linea.cantidad} x S/ {Number(linea.producto.precio).toFixed(2)} = S/ {(linea.cantidad * Number(linea.producto.precio)).toFixed(2)}</div>
+</div>
+<div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+<button onClick={() => cambiarCantidad(linea.producto, -1)} style={{
+width: 22, height: 22, borderRadius: 6, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 13, cursor: "pointer", lineHeight: 1,
+}}>–</button>
+<span style={{ fontSize: 12.5, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{linea.cantidad}</span>
+<button onClick={() => cambiarCantidad(linea.producto, 1)} style={{
+width: 22, height: 22, borderRadius: 6, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 13, cursor: "pointer", lineHeight: 1,
+}}>+</button>
+<button onClick={() => eliminarItem(linea.producto.id)} title="Quitar" style={{
+width: 22, height: 22, borderRadius: 6, border: "none",
+background: "transparent", color: "#D98A7D", fontSize: 14, cursor: "pointer", marginLeft: 2,
+}}>✕</button>
+</div>
+</div>
+))}
+</div>
 
-            <button onClick={cargar} disabled={enviando} style={{
-              width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
-              padding: "13px 0", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
-            }}>
-              {enviando ? "Cargando..." : "✓ Confirmar pedido"}
-            </button>
-          </div>
-        )}
+<div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, marginBottom: 12, paddingTop: 8, borderTop: `1px solid ${T.cardBorder}` }}>
+<span>Total</span>
+<span style={{ color: T.gold }}>S/ {totalCarrito.toFixed(2)}</span>
+</div>
 
-      </div>
-    </div>
-  );
+<button onClick={cargar} disabled={enviando} style={{
+width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "13px 0", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
+}}>
+{enviando ? "Cargando..." : "✓ Confirmar pedido"}
+</button>
+</div>
+)}
+
+</div>
+</div>
+);
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<ConsumoRapido />);
