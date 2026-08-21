@@ -246,6 +246,7 @@ const [cargando, setCargando] = useState(true);
 const [error, setError] = useState(null);
 const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
 const [movimiento, setMovimiento] = useState([]);
+const [huespedesAlojados, setHuespedesAlojados] = useState([]);
 const [diaSeleccionado, setDiaSeleccionado] = useState(0);
 const [limpieza, setLimpieza] = useState([]);
 const [staffHousekeeping, setStaffHousekeeping] = useState([]);
@@ -253,7 +254,7 @@ const [asignando, setAsignando] = useState({});
 
 const cargarTodo = useCallback(async () => {
 try {
-const [kpisData, llegadasData, domosData, actividadData, movimientoData, limpiezaData, staffData] = await Promise.all([
+const [kpisData, llegadasData, domosData, actividadData, movimientoData, limpiezaData, staffData, alojadosData] = await Promise.all([
 apiGet("/api/dashboard/kpis"),
 apiGet("/api/reservas/llegadas-hoy"),
 apiGet("/api/domos"),
@@ -261,9 +262,11 @@ apiGet("/api/consumos/pendientes"),
 apiGet("/api/dashboard/movimiento"),
 apiGet("/api/domos/estado-limpieza"),
 apiGet("/api/staff"),
+apiGet("/api/domos/estado-hoy"),
 ]);
 setKpis(kpisData); setLlegadas(llegadasData); setDomos(domosData); setActividad(actividadData);
 setMovimiento(movimientoData.dias || []);
+setHuespedesAlojados(alojadosData || []);
 setLimpieza(limpiezaData || []);
 setStaffHousekeeping((staffData || []).filter((s) => s.hace_housekeeping === true));
 setUltimaActualizacion(new Date()); setError(null);
@@ -412,12 +415,7 @@ borderRadius: 12, padding: 10
 <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Llegan ({movimiento[diaSeleccionado].detalleLlegan.length})</div>
 {movimiento[diaSeleccionado].detalleLlegan.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
 {movimiento[diaSeleccionado].detalleLlegan.map((h, i) => (
-<div key={i} style={{ fontSize: 12.5, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-<span>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></span>
-{h.reserva_id && h.estado === "check_in" && (
-<a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>🍽️ Cargar consumo</a>
-)}
-</div>
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
 ))}
 </div>
 <div>
@@ -431,19 +429,39 @@ borderRadius: 12, padding: 10
 <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>En casa ({movimiento[diaSeleccionado].detalleEnCasa.length})</div>
 {movimiento[diaSeleccionado].detalleEnCasa.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
 {movimiento[diaSeleccionado].detalleEnCasa.map((h, i) => (
-<div key={i} style={{ fontSize: 12.5, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-<span>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></span>
-{h.reserva_id && (
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
-<a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
-<a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
-</div>
-)}
-</div>
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
 ))}
 </div>
 </div>
 )}
+</div>
+
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+<div style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>Consumos — huéspedes alojados ({huespedesAlojados.length})</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 14 }}>Desde que se completa el check-in hasta que se cierra el check-out. Aparecen aquí sin importar el día de llegada o salida.</div>
+{huespedesAlojados.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>Nadie alojado en este momento.</div>}
+<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+{huespedesAlojados.map((h) => {
+const hoyStr = new Date().toISOString().slice(0, 10);
+const salidaStr = h.fecha_salida ? String(h.fecha_salida).slice(0, 10) : null;
+const atrasado = salidaStr && salidaStr < hoyStr;
+return (
+<div key={h.reserva_id} style={{ background: T.bgElevated || T.bg, border: `1px solid ${atrasado ? T.amber : T.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+<div style={{ minWidth: 0 }}>
+<div style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.nombre_completo}</div>
+<div style={{ color: T.ivoryMuted, fontSize: 11 }}>
+Domo {h.codigo}{h.canal_origen ? ` · ${h.canal_origen}` : ""}{salidaStr ? ` · sale ${salidaStr}` : ""}
+{atrasado && <span style={{ color: T.amber, fontWeight: 600 }}> · atrasado</span>}
+</div>
+</div>
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+<a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
+<a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
+</div>
+</div>
+);
+})}
+</div>
 </div>
 
 <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
