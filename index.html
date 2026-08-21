@@ -446,15 +446,15 @@ const hoyStr = new Date().toISOString().slice(0, 10);
 const salidaStr = h.fecha_salida ? String(h.fecha_salida).slice(0, 10) : null;
 const atrasado = salidaStr && salidaStr < hoyStr;
 return (
-<div key={h.reserva_id} style={{ background: T.bgElevated || T.bg, border: `1px solid ${atrasado ? T.amber : T.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+<div key={h.reserva_id} style={{ background: T.bgElevated || T.bg, border: `1px solid ${atrasado ? T.amber : T.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 <div style={{ minWidth: 0 }}>
 <div style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.nombre_completo}</div>
-<div style={{ color: T.ivoryMuted, fontSize: 11 }}>
+<div style={{ color: T.ivoryMuted, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
 Domo {h.codigo}{h.canal_origen ? ` · ${h.canal_origen}` : ""}{salidaStr ? ` · sale ${salidaStr}` : ""}
 {atrasado && <span style={{ color: T.amber, fontWeight: 600 }}> · atrasado</span>}
 </div>
 </div>
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+<div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
 <a href={`consumo.html?id=${h.reserva_id}&tab=desayuno`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍳 Pedir desayuno</a>
 <a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
 <a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
