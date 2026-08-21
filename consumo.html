@@ -59,168 +59,110 @@ const tabInicial = new URLSearchParams(window.location.search).get("tab");
 
 // ---------------------------------------------------------------
 // Desayuno: no es un catálogo de productos fijos (como Restaurant/Bar),
-// es un plato que el huésped arma eligiendo entre varias opciones — por
-// eso tiene su propia pestaña con un formulario, en vez de salir de la
-// tabla `productos`. Está incluido en la tarifa, así que cada plato se
-// agrega al pedido con precio S/ 0.00 (no se cobra en el checkout).
+// pero desde el 22 ago funciona con el mismo mecanismo de cantidad +/-
+// que Restaurant/Bar, en vez de un formulario guiado paso a paso — así
+// una sola pantalla cubre el pedido de varias personas del mismo domo
+// (ej. 2x Huevos revueltos para la pareja + 1x Pancakes para el niño).
+// Cada ítem es un "producto virtual" con precio S/ 0.00 (está incluido
+// en la tarifa, no se cobra en el checkout), agrupado en 4 secciones
+// fijas que definió Dante con su equipo.
 // ---------------------------------------------------------------
-const PLATOS_PRINCIPALES = [
-{ id: "tamales", label: "Tamales criollos" },
-{ id: "huevos", label: "Huevos al gusto" },
-{ id: "sandwich", label: "Sándwich" },
-{ id: "pancakes", label: "Pancakes" },
+const DESAYUNO_SECCIONES = [
+{
+titulo: "1. Plato principal",
+items: [
+{ id: "des-plato-tamal-huevos", nombre: "Tamal criollo + huevo a la inglesa" },
+{ id: "des-plato-huevos-revueltos", nombre: "Huevos revueltos" },
+{ id: "des-plato-huevos-fritos", nombre: "Huevos fritos" },
+{ id: "des-plato-huevos-inglesa", nombre: "Huevos a la inglesa" },
+{ id: "des-plato-huevos-omelette", nombre: "Huevos omelette" },
+{ id: "des-plato-sandwich", nombre: "Sándwich" },
+{ id: "des-plato-pancakes", nombre: "Pancakes" },
+],
+},
+{
+titulo: "2. Bebida fría — jugo natural",
+items: [
+{ id: "des-jugo-papaya", nombre: "Jugo de papaya" },
+{ id: "des-jugo-piña", nombre: "Jugo de piña" },
+{ id: "des-jugo-naranja", nombre: "Jugo de naranja" },
+],
+},
+{
+titulo: "3. Bebida caliente",
+items: [
+{ id: "des-cafe-espresso", nombre: "Café espresso" },
+{ id: "des-cafe-capuchino", nombre: "Café capuchino" },
+{ id: "des-cafe-americano", nombre: "Café americano" },
+{ id: "des-leche", nombre: "Leche caliente" },
+{ id: "des-mate-coca", nombre: "Mate de coca" },
+{ id: "des-infusion-muna", nombre: "Infusión de muña" },
+{ id: "des-infusion-toronjil", nombre: "Infusión de toronjil" },
+{ id: "des-infusion-menta", nombre: "Infusión de menta" },
+{ id: "des-te", nombre: "Té" },
+{ id: "des-infusion-manzanilla", nombre: "Infusión de manzanilla" },
+],
+},
+{
+titulo: "4. Complementos",
+items: [
+{ id: "des-yogurt", nombre: "Yogurt" },
+{ id: "des-granola", nombre: "Granola" },
+{ id: "des-ensalada-fruta", nombre: "Ensalada de fruta" },
+{ id: "des-mermelada", nombre: "Mermelada" },
+{ id: "des-mantequilla", nombre: "Mantequilla" },
+],
+},
 ];
-const RELLENOS_TAMALES = ["Cerdo", "Champiñones"];
-const ESTILOS_HUEVOS = ["Revueltos", "Fritos", "Sunny Side Up", "Omelette"];
-const ACOMPANAMIENTOS_HUEVOS = ["Queso", "Tocino", "Jamón", "Champiñones"];
-const RELLENOS_SANDWICH = ["Jamón", "Queso", "Mixto"];
-const COMPLEMENTOS_FRESCOS = ["Yogurt con granola", "Ensalada de frutas"];
-const JUGOS_DESAYUNO = ["Papaya", "Piña", "Naranja"];
-const BEBIDAS_CALIENTES = ["Café", "Infusión de muña", "Mate de coca", "Otra infusión"];
+const DESAYUNO_NOTAS_ID = "des-notas";
 
-function componerDescripcionDesayuno(s) {
-const partes = [];
-if (s.plato === "tamales") {
-partes.push(s.rellenoTamales ? `Tamal criollo de ${s.rellenoTamales.toLowerCase()}` : "Tamal criollo");
-} else if (s.plato === "huevos") {
-const detalles = [];
-if (s.estiloHuevos) detalles.push(s.estiloHuevos.toLowerCase());
-if (s.acompHuevos.length > 0) detalles.push("con " + s.acompHuevos.join(", "));
-partes.push(`Huevos ${detalles.join(" ")}`.trim());
-} else if (s.plato === "sandwich") {
-partes.push(s.rellenoSandwich ? `Sándwich de ${s.rellenoSandwich.toLowerCase()}` : "Sándwich");
-} else if (s.plato === "pancakes") {
-partes.push("Pancakes");
-}
-s.complementos.forEach((c) => partes.push(c));
-if (s.jugo) partes.push(`Jugo de ${s.jugo.toLowerCase()}`);
-if (s.bebida) {
-partes.push(s.bebida === "Otra infusión" && s.bebidaOtra.trim() ? s.bebidaOtra.trim() : s.bebida);
-}
-let desc = partes.join(" · ");
-if (s.notas.trim()) desc += (desc ? " · " : "") + `Nota: ${s.notas.trim()}`;
-return desc;
+function FilaDesayuno({ nombre, cant, onCambiar }) {
+return (
+<div style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+padding: "10px 12px", borderRadius: 10, marginBottom: 8,
+border: `1px solid ${cant > 0 ? T.gold : T.cardBorder}`,
+background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
+}}>
+<div style={{ fontSize: 13, fontWeight: cant > 0 ? 700 : 500, color: cant > 0 ? T.gold : T.ivory }}>{nombre}</div>
+<div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+<button onClick={() => onCambiar(-1)} disabled={cant === 0} style={{
+width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 15, cursor: cant === 0 ? "default" : "pointer",
+opacity: cant === 0 ? 0.4 : 1,
+}}>–</button>
+<div style={{ width: 18, textAlign: "center", fontSize: 14, fontWeight: 700 }}>{cant}</div>
+<button onClick={() => onCambiar(1)} style={{
+width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 15, cursor: "pointer",
+}}>+</button>
+</div>
+</div>
+);
 }
 
-const ESTADO_DESAYUNO_VACIO = {
-plato: null, rellenoTamales: null, estiloHuevos: null, acompHuevos: [], rellenoSandwich: null,
-complementos: [], jugo: null, bebida: null, bebidaOtra: "", notas: "",
-};
-
-function FormularioDesayuno({ onAgregar }) {
-const [s, setS] = useState(ESTADO_DESAYUNO_VACIO);
-const set = (campo, valor) => setS((prev) => ({ ...prev, [campo]: valor }));
-const toggleEnLista = (campo, item) => setS((prev) => ({
-...prev,
-[campo]: prev[campo].includes(item) ? prev[campo].filter((a) => a !== item) : [...prev[campo], item],
-}));
-const opcionStyle = (activa) => ({
-padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12.5,
-border: activa ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-background: activa ? "rgba(201,162,75,0.15)" : T.card,
-color: activa ? T.gold : T.ivory,
-});
-const previa = componerDescripcionDesayuno(s);
-
+function PanelDesayuno({ carrito, cambiarCantidad, notasDesayuno, actualizarNotasDesayuno }) {
 return (
 <div>
-<div style={{ background: "rgba(201,162,75,0.10)", border: `1px solid ${T.gold}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: T.ivoryMuted }}>
-🕐 El desayuno se puede pedir a cualquier hora, pero avisando con <strong style={{ color: T.gold }}>1 hora de anticipación</strong>. En la mesa siempre hay pan fresco y mantequilla 🍞🧈, no hace falta pedirlos.
+{DESAYUNO_SECCIONES.map((seccion) => (
+<div key={seccion.titulo} style={{ marginBottom: 18 }}>
+<div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8, color: T.ivoryMuted }}>{seccion.titulo}</div>
+{seccion.items.map((item) => {
+const productoVirtual = { id: item.id, nombre: item.nombre, precio: 0, categoria: "desayuno" };
+const cant = carrito[item.id]?.cantidad || 0;
+return (
+<FilaDesayuno key={item.id} nombre={item.nombre} cant={cant} onCambiar={(delta) => cambiarCantidad(productoVirtual, delta)} />
+);
+})}
 </div>
-
-<div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>1. Plato principal</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-{PLATOS_PRINCIPALES.map((p) => (
-<div key={p.id} onClick={() => set("plato", s.plato === p.id ? null : p.id)} style={opcionStyle(s.plato === p.id)}>{p.label}</div>
 ))}
-</div>
 
-{s.plato === "tamales" && (
-<div style={{ marginBottom: 14, paddingLeft: 12, borderLeft: `2px solid ${T.cardBorder}` }}>
-<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Relleno</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-{RELLENOS_TAMALES.map((op) => (
-<div key={op} onClick={() => set("rellenoTamales", op)} style={opcionStyle(s.rellenoTamales === op)}>{op}</div>
-))}
-</div>
-</div>
-)}
-
-{s.plato === "huevos" && (
-<div style={{ marginBottom: 14, paddingLeft: 12, borderLeft: `2px solid ${T.cardBorder}` }}>
-<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Estilo</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-{ESTILOS_HUEVOS.map((op) => (
-<div key={op} onClick={() => set("estiloHuevos", op)} style={opcionStyle(s.estiloHuevos === op)}>{op}</div>
-))}
-</div>
-<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Acompañamiento (puedes elegir varios)</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-{ACOMPANAMIENTOS_HUEVOS.map((op) => (
-<div key={op} onClick={() => toggleEnLista("acompHuevos", op)} style={opcionStyle(s.acompHuevos.includes(op))}>{op}</div>
-))}
-<div onClick={() => set("acompHuevos", ACOMPANAMIENTOS_HUEVOS)} style={opcionStyle(false)}>Todos</div>
-</div>
-</div>
-)}
-
-{s.plato === "sandwich" && (
-<div style={{ marginBottom: 14, paddingLeft: 12, borderLeft: `2px solid ${T.cardBorder}` }}>
-<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Relleno</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-{RELLENOS_SANDWICH.map((op) => (
-<div key={op} onClick={() => set("rellenoSandwich", op)} style={opcionStyle(s.rellenoSandwich === op)}>{op}</div>
-))}
-</div>
-</div>
-)}
-
-<div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>2. Complementos frescos (opcional, puedes elegir varios)</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-{COMPLEMENTOS_FRESCOS.map((op) => (
-<div key={op} onClick={() => toggleEnLista("complementos", op)} style={opcionStyle(s.complementos.includes(op))}>{op}</div>
-))}
-</div>
-
-<div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>3. Bebida fría — jugo natural (opcional)</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-{JUGOS_DESAYUNO.map((op) => (
-<div key={op} onClick={() => set("jugo", s.jugo === op ? null : op)} style={opcionStyle(s.jugo === op)}>{op}</div>
-))}
-</div>
-
-<div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>4. Bebida caliente (opcional)</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: s.bebida === "Otra infusión" ? 8 : 14 }}>
-{BEBIDAS_CALIENTES.map((op) => (
-<div key={op} onClick={() => set("bebida", s.bebida === op ? null : op)} style={opcionStyle(s.bebida === op)}>{op}</div>
-))}
-</div>
-{s.bebida === "Otra infusión" && (
-<input value={s.bebidaOtra} onChange={(e) => set("bebidaOtra", e.target.value)} placeholder="¿Cuál infusión?" style={{
-width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 12.5, marginBottom: 14,
-}} />
-)}
-
+<div style={{ marginBottom: 10 }}>
 <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Notas o combinaciones especiales (opcional)</div>
-<textarea value={s.notas} onChange={(e) => set("notas", e.target.value)} placeholder="Ej: sin sal, huevos bien cocidos, alergia a..." rows={2} style={{
-width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 12.5, marginBottom: 14, resize: "vertical", fontFamily: "inherit",
+<textarea value={notasDesayuno} onChange={(e) => actualizarNotasDesayuno(e.target.value)} placeholder="Ej: sin sal, huevos bien cocidos, alergia a..." rows={2} style={{
+width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 12.5, resize: "vertical", fontFamily: "inherit",
 }} />
-
-{previa && (
-<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 10 }}>Se va a pedir: <span style={{ color: T.ivory }}>{previa}</span></div>
-)}
-
-<button
-disabled={!previa}
-onClick={() => { onAgregar(previa); setS(ESTADO_DESAYUNO_VACIO); }}
-style={{
-width: "100%", background: previa ? T.gold : T.cardBorder, color: previa ? "#1C1A20" : T.ivoryMuted,
-border: "none", borderRadius: 8, padding: "12px 0", fontSize: 13.5, fontWeight: 600,
-cursor: previa ? "pointer" : "default", marginBottom: 20,
-}}
->
-+ Agregar este pedido de desayuno
-</button>
+</div>
 </div>
 );
 }
@@ -236,6 +178,7 @@ const [productos, setProductos] = useState([]);
 const [cargandoProductos, setCargandoProductos] = useState(true);
 
 const [carrito, setCarrito] = useState({});
+const [notasDesayuno, setNotasDesayuno] = useState("");
 
 const [enviando, setEnviando] = useState(false);
 const [ultimoOk, setUltimoOk] = useState(null);
@@ -284,10 +227,20 @@ return copia;
 });
 }
 
-function agregarDesayuno(descripcion) {
-const id = `desayuno-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const productoVirtual = { id, nombre: descripcion, precio: 0, categoria: "desayuno" };
-setCarrito((prev) => ({ ...prev, [id]: { producto: productoVirtual, cantidad: 1 } }));
+function actualizarNotasDesayuno(texto) {
+setNotasDesayuno(texto);
+setCarrito((prev) => {
+const copia = { ...prev };
+if (texto.trim()) {
+copia[DESAYUNO_NOTAS_ID] = {
+producto: { id: DESAYUNO_NOTAS_ID, nombre: `📝 Nota: ${texto.trim()}`, precio: 0, categoria: "desayuno" },
+cantidad: 1,
+};
+} else {
+delete copia[DESAYUNO_NOTAS_ID];
+}
+return copia;
+});
 }
 
 function eliminarItem(productoId) {
@@ -433,7 +386,7 @@ color: activa ? T.gold : T.ivory,
 {categoriaActiva === "desayuno" && (
 <div>
 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Desayuno</div>
-<FormularioDesayuno onAgregar={agregarDesayuno} />
+<PanelDesayuno carrito={carrito} cambiarCantidad={cambiarCantidad} notasDesayuno={notasDesayuno} actualizarNotasDesayuno={actualizarNotasDesayuno} />
 </div>
 )}
 
