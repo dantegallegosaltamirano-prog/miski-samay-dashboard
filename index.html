@@ -454,7 +454,8 @@ Domo {h.codigo}{h.canal_origen ? ` · ${h.canal_origen}` : ""}{salidaStr ? ` · 
 {atrasado && <span style={{ color: T.amber, fontWeight: 600 }}> · atrasado</span>}
 </div>
 </div>
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+<a href={`consumo.html?id=${h.reserva_id}&tab=desayuno`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍳 Pedir desayuno</a>
 <a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>🍽️ Cargar consumo</a>
 <a href={`checkout.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap" }}>💳 Cerrar cuenta</a>
 </div>
