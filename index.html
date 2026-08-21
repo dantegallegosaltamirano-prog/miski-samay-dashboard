@@ -412,7 +412,12 @@ borderRadius: 12, padding: 10
 <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Llegan ({movimiento[diaSeleccionado].detalleLlegan.length})</div>
 {movimiento[diaSeleccionado].detalleLlegan.length === 0 && <div style={{ fontSize: 12, color: T.ivoryMuted }}>—</div>}
 {movimiento[diaSeleccionado].detalleLlegan.map((h, i) => (
-<div key={i} style={{ fontSize: 12.5, marginBottom: 4 }}>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></div>
+<div key={i} style={{ fontSize: 12.5, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+<span>{h.huesped} <span style={{ color: T.ivoryMuted, fontSize: 11 }}>· {h.canal}</span></span>
+{h.reserva_id && h.estado === "check_in" && (
+<a href={`consumo.html?id=${h.reserva_id}`} style={{ fontSize: 11, color: T.gold, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>🍽️ Cargar consumo</a>
+)}
+</div>
 ))}
 </div>
 <div>
@@ -512,9 +517,6 @@ border: staffSeleccionado ? "none" : `1px solid ${T.cardBorder}`,
 <div style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.nombre_completo}</div>
 <div style={{ color: T.ivoryMuted, fontSize: 11.5 }}>{l.canal_origen} · {l.booking_id_externo}</div>
 </div>
-{!l.datos_completos && (
-<span style={{ background: "rgba(184,135,59,0.14)", color: T.amber, border: "1px solid rgba(184,135,59,0.3)", fontSize: 9.5, padding: "4px 8px", borderRadius: 999, flexShrink: 0 }}>Requiere OCR</span>
-)}
 </div>
 <div style={{ color: T.ivoryMuted, display: "flex", gap: 16, fontSize: 11.5, marginBottom: 12 }}>
 <span>🕐 {formatearHora(l.hora_llegada_estimada)}</span>
