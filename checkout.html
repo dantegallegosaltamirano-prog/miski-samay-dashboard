@@ -260,7 +260,7 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
           <div style={{ marginBottom: 8 }}>
             {detalle.map((it, i) => (
               <div key={it.id ?? i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, padding: "4px 0" }}>
-                <span>{it.cantidad}x {it.descripcion}{it.categoria === "frigobar" ? " (frigobar)" : ""}</span>
+                <span>{it.categoria === "frigobar" ? `${it.cantidad}x ` : ""}{it.descripcion}{it.categoria === "frigobar" ? " (frigobar)" : ""}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span>S/ {fmt(it.subtotal)}</span>
                   {it.id != null && (
