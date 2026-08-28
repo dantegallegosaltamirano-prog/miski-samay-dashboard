@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Reportes</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 10px; }
+  .solo-impresion { display: none; }
+  @media print {
+    body * { visibility: hidden; }
+    #reporte-imprimible, #reporte-imprimible * { visibility: visible; }
+    #reporte-imprimible {
+      position: absolute; left: 0; top: 0; width: 100%;
+      background: #fff !important; color: #000 !important; border: none !important; padding: 20px;
+    }
+    #reporte-imprimible * { color: #000 !important; border-color: #ccc !important; background: transparent !important; }
+    #reporte-imprimible .solo-impresion { display: block !important; margin-bottom: 14px; }
+    .no-imprimir { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+function fechaCorta(f) {
+  if (!f) return "—";
+  const d = new Date(f + "T00:00:00");
+  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+}
+
+function Check({ ok }) {
+  return (
+    <span style={{ color: ok ? T.green : T.ivoryMuted, fontSize: 15 }}>
+      {ok ? "✅" : "⬜"}
+    </span>
+  );
+}
+
+function CeldaComprobantes({ comprobantes }) {
+  if (!comprobantes || comprobantes.length === 0) {
+    return <span style={{ fontSize: 11.5, color: T.ivoryMuted }}>— sin definir</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {comprobantes.map((c, i) => {
+        if (c.estado === "emitido") {
+          return (
+            <a key={i} href={c.pdfUrl || undefined} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 11.5, color: T.green, textDecoration: c.pdfUrl ? "underline" : "none" }}>
+              ✅ {c.tipoComprobante} {c.numeroComprobante || ""} ({c.moneda})
+            </a>
+          );
+        }
+        if (c.estado === "error") {
+          return (
+            <span key={i} style={{ fontSize: 11.5, color: T.amber }}>
+              ⚠️ {c.tipoComprobante} ({c.moneda}) — error, reintentar
+            </span>
+          );
+        }
+        return (
+          <span key={i} style={{ fontSize: 11.5, color: T.ivoryMuted }}>
+            ⏳ {c.tipoComprobante} ({c.moneda}) — pendiente
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function descargarCSV(anio, mes, reservas) {
+  const encabezado = ["Huésped", "Domo", "Canal", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
+  const filas = reservas.map((r) => [
+    r.nombre_completo || "Por confirmar",
+    r.domo_codigo || "Sin domo",
+    r.canal_origen || "",
+    r.fecha_llegada,
+    r.fecha_salida,
+    r.checkin_hecho ? "Sí" : "No",
+    r.checkout_hecho ? "Sí" : "No",
+    r.cantidad_consumos > 0 ? `Sí (${r.cantidad_consumos})` : "No",
+    (r.comprobantes || []).map((c) => `${c.tipoComprobante || ""} ${c.numeroComprobante || ""} [${c.estado || "sin definir"}]`).join(" | ") || "sin definir",
+  ]);
+  const escapar = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [encabezado, ...filas].map((fila) => fila.map(escapar).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `reporte_miski_samay_${anio}_${String(mes).padStart(2, "0")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escaparHtml(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function celdaComprobantesHtml(comprobantes) {
+  if (!comprobantes || comprobantes.length === 0) return "sin definir";
+  return comprobantes.map((c) => {
+    const etiqueta = `${escaparHtml(c.tipoComprobante)} ${escaparHtml(c.numeroComprobante || "")} (${escaparHtml(c.moneda)}) — ${escaparHtml(c.estado || "sin definir")}`;
+    return c.pdfUrl ? `<a href="${escaparHtml(c.pdfUrl)}">${etiqueta}</a>` : etiqueta;
+  }).join("<br/>");
+}
+
+function descargarHTML(anio, mes, reservas) {
+  const filasHtml = reservas.map((r) => `
+    <tr>
+      <td>${escaparHtml(r.nombre_completo || "Por confirmar")}</td>
+      <td>${escaparHtml(r.domo_codigo || "—")}</td>
+      <td>${escaparHtml(r.canal_origen || "—")}</td>
+      <td>${escaparHtml(r.fecha_llegada)}</td>
+      <td>${escaparHtml(r.fecha_salida)}</td>
+      <td style="text-align:center">${r.checkin_hecho ? "✅" : "—"}</td>
+      <td style="text-align:center">${r.checkout_hecho ? "✅" : "—"}</td>
+      <td style="text-align:center">${r.cantidad_consumos > 0 ? "✅" : "—"}</td>
+      <td>${celdaComprobantesHtml(r.comprobantes)}</td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" />
+<title>Reporte Miski Samay — ${MESES[mes - 1]} ${anio}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #1C1A20; }
+  h1 { font-size: 18px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px 10px; font-size: 13px; text-align: left; }
+  th { background: #f2ede2; }
+  a { color: #8a6d1f; }
+</style></head>
+<body>
+<h1>Reporte mensual — Miski Samay Domo Boutique — ${MESES[mes - 1]} ${anio}</h1>
+<p>Generado el ${new Date().toLocaleDateString("es-PE")} desde el panel operativo.</p>
+<table>
+<thead><tr>
+<th>Huésped</th><th>Domo</th><th>Canal</th><th>Llegada</th><th>Salida</th>
+<th>Check-in</th><th>Check-out</th><th>Consumos</th><th>Comprobante(s)</th>
+</tr></thead>
+<tbody>${filasHtml}</tbody>
+</table>
+</body></html>`;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `reporte_miski_samay_${anio}_${String(mes).padStart(2, "0")}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ReportesMensual() {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [reservas, setReservas] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  function cargar() {
+    setCargando(true);
+    setError(null);
+    fetch(`${API_BASE_URL}/api/reportes/mensual?anio=${anio}&mes=${mes}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { setError(data.error); setCargando(false); return; }
+        setReservas(data.reservas || []);
+        setCargando(false);
+      })
+      .catch(() => { setError("No se pudo cargar el reporte"); setCargando(false); });
+  }
+  useEffect(cargar, [anio, mes]);
+
+  const totalCheckin = reservas ? reservas.filter((r) => r.checkin_hecho).length : 0;
+  const totalCheckout = reservas ? reservas.filter((r) => r.checkout_hecho).length : 0;
+  const totalFacturadas = reservas ? reservas.filter((r) => (r.comprobantes || []).some((c) => c.estado === "emitido")).length : 0;
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>▤ Reportes mensuales</div>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>Estado de check-in, check-out, consumos y comprobantes por mes.</div>
+          </div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        </div>
+
+        <div className="no-imprimir" style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Año</div>
+            <select
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}
+            >
+              {[hoy.getFullYear() - 1, hoy.getFullYear(), hoy.getFullYear() + 1].map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Mes</div>
+            <select
+              value={mes}
+              onChange={(e) => setMes(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}
+            >
+              {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={() => reservas && reservas.length > 0 && descargarCSV(anio, mes, reservas)}
+            disabled={!reservas || reservas.length === 0}
+            style={{
+              background: reservas && reservas.length > 0 ? T.gold : T.cardBorder,
+              color: reservas && reservas.length > 0 ? "#1C1A20" : T.ivoryMuted,
+              border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: reservas && reservas.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            ⬇ Descargar CSV
+          </button>
+          <button
+            onClick={() => reservas && reservas.length > 0 && descargarHTML(anio, mes, reservas)}
+            disabled={!reservas || reservas.length === 0}
+            style={{
+              background: "transparent", color: reservas && reservas.length > 0 ? T.ivory : T.ivoryMuted,
+              border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: reservas && reservas.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            ⬇ Descargar HTML
+          </button>
+          <button
+            onClick={() => reservas && reservas.length > 0 && window.print()}
+            disabled={!reservas || reservas.length === 0}
+            style={{
+              background: "transparent", color: reservas && reservas.length > 0 ? T.ivory : T.ivoryMuted,
+              border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: reservas && reservas.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            🖨️ Exportar PDF
+          </button>
+        </div>
+
+        {cargando && <div style={{ color: T.ivoryMuted }}>Cargando…</div>}
+        {error && <div style={{ color: T.red }}>⚠️ {error}</div>}
+
+        {reservas && !cargando && (
+          <div id="reporte-imprimible">
+            <div className="solo-impresion">
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Miski Samay Domo Boutique — Reporte {MESES[mes - 1]} {anio}</div>
+              <div style={{ fontSize: 12, marginTop: 2 }}>Generado el {new Date().toLocaleDateString("es-PE")}</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{reservas.length}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>reservas del mes</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{totalCheckin}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>con check-in</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{totalCheckout}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>con check-out</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: T.green }}>{totalFacturadas}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>facturadas</div>
+              </div>
+            </div>
+
+            {reservas.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>No hay reservas registradas para {MESES[mes - 1]} {anio}.</div>
+            ) : (
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Huésped</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Domo</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Canal</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Llegada</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Salida</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "center" }}>Check-in</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "center" }}>Check-out</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "center" }}>Consumos</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comprobante(s)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reservas.map((r) => (
+                      <tr key={r.reserva_id} style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                        <td style={{ fontSize: 12.5, fontWeight: 600 }}>{r.nombre_completo || "Por confirmar"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.domo_codigo || "—"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.canal_origen || "—"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_llegada)}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_salida)}</td>
+                        <td style={{ textAlign: "center" }}><Check ok={r.checkin_hecho} /></td>
+                        <td style={{ textAlign: "center" }}><Check ok={r.checkout_hecho} /></td>
+                        <td style={{ textAlign: "center" }}><Check ok={r.cantidad_consumos > 0} /></td>
+                        <td><CeldaComprobantes comprobantes={r.comprobantes} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ReportesMensual />);
+</script>
+</body>
+</html>
