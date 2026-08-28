@@ -441,11 +441,11 @@ function CorregirPago() {
       const data = await resp.json();
       if (!resp.ok || data.error) throw new Error(data.error || "No se pudo emitir el comprobante");
       if (!data.ok) throw new Error(data.error || "SUNAT no aceptó el comprobante");
-      setPagos((prev) => prev.map((p) => p.id === pagoId
-        ? { ...p, tipo_comprobante: data.tipoComprobante, numero_comprobante: data.numeroComprobante,
-            comprobante_estado: "emitido", comprobante_error: null, sunat_status: data.sunatStatus,
-            comprobante_pdf_url: data.pdfUrl }
-        : p));
+      // El comprobante puede haberse emitido agrupado con otro pago de la
+      // misma reserva y moneda (regla de "uno por moneda"), así que en vez
+      // de parchar solo este pago en el estado local, recargamos la lista
+      // completa para que el/los pago(s) hermano(s) también se vean al día.
+      if (reservaSel) await seleccionarReserva(reservaSel);
       setComprobanteEditId(null);
     } catch (e) {
       setErrorComprobante(e.message);
