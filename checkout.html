@@ -1023,8 +1023,15 @@ function CheckoutPantalla() {
     ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSoles / Number(tipoCambioConsumo) : 0)
     : saldoConsumoSoles;
 
-  const hayHospedajeQueCobrar = montoCobroHospedaje > 0.009;
-  const hayConsumoQueCobrar = montoCobroConsumo > 0.009;
+  // Si hay saldo pendiente (después del adelanto) es independiente de la moneda
+  // elegida para cobrarlo y de si ya se llenó el tipo de cambio — antes esto se
+  // calculaba sobre el monto YA convertido, así que al elegir cobrar el
+  // hospedaje en soles (antes de escribir el tipo de cambio) el monto convertido
+  // era S/.0.00, esto se leía como "no hay nada que cobrar", el campo de tipo de
+  // cambio se ocultaba (dependía de esta misma bandera) y aparecía "Cubierto por
+  // adelanto" aunque sí quedaba saldo real por cobrar — un candado sin llave.
+  const hayHospedajeQueCobrar = saldoHospedajeUsd > 0.009;
+  const hayConsumoQueCobrar = saldoConsumoSoles > 0.009;
 
   // Un comprobante por cada moneda distinta que se está cobrando (no por
   // concepto) — si hospedaje y consumo terminan en la misma moneda, comparten
