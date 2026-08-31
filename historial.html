@@ -39,7 +39,13 @@ function fmt(n) {
 }
 function fechaCorta(f) {
   if (!f) return "—";
-  const d = new Date(f + "T00:00:00");
+  // La API a veces manda solo "2026-07-31" y a veces el timestamp ISO
+  // completo "2026-07-31T00:00:00.000Z" — nos quedamos solo con la fecha
+  // (los primeros 10 caracteres) antes de armar el Date, si no quedaba
+  // "...T00:00:00.000ZT00:00:00" y salía "Invalid Date".
+  const soloFecha = String(f).slice(0, 10);
+  const d = new Date(soloFecha + "T00:00:00");
+  if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
 }
 
@@ -162,24 +168,35 @@ function SeccionLlegadasFuturas({ lista }) {
 
 function SeccionSinComprobante({ lista }) {
   return (
-    <div style={cardStyle}>
+    <div style={{ ...cardStyle, border: lista.length > 0 ? `1px solid ${T.amber}` : undefined }}>
       <div style={{ ...sectionTitleStyle, color: lista.length > 0 ? T.amber : T.ivory }}>
-        ⚠️ Cuenta cerrada, sin comprobante todavía ({lista.length})
+        ⚠️ Cuenta cerrada, lista para facturar ({lista.length})
       </div>
       <div style={sectionSubStyle}>
-        Ya se cerró la cuenta en agosto, pero no tienen boleta/factura emitida (por el token de HaylliERP, o porque se cerraron antes de tener la emisión automática). Se resuelven desde "Corregir un pago anterior" en Check-out, buscando al huésped.
+        Ya se cerró la cuenta, pero todavía no tienen boleta/factura emitida (por el token de HaylliERP, porque se cerraron antes de tener la emisión automática, o porque quien cerró la cuenta no tiene permiso para emitir). Dale clic a "Generar comprobante" y te lleva directo a esa reserva en "Corregir un pago anterior", sin tener que buscarla a mano.
       </div>
       {lista.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna en este estado.</div>
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna en este estado. 🎉</div>
       ) : (
         <div>
           {lista.map((r) => (
             <FilaReserva key={r.reserva_id} r={r}>
-              {r.booking_id_externo && r.booking_id_externo.startsWith("HIST-") && (
-                <span style={{ fontSize: 10.5, color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 6, padding: "3px 7px" }}>
-                  agregada a mano
-                </span>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {r.booking_id_externo && r.booking_id_externo.startsWith("HIST-") && (
+                  <span style={{ fontSize: 10.5, color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 6, padding: "3px 7px" }}>
+                    agregada a mano
+                  </span>
+                )}
+                <a
+                  href={`checkout.html?corregirId=${r.reserva_id}&corregirNombre=${encodeURIComponent(r.nombre_completo || "")}&corregirCodigo=${encodeURIComponent(r.domo_codigo || "")}`}
+                  style={{
+                    background: T.amber, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
+                    textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                  }}
+                >
+                  Generar comprobante →
+                </a>
+              </div>
             </FilaReserva>
           ))}
         </div>
