@@ -74,6 +74,7 @@ const [pin, setPin] = useState(persona?.pin || (esEdicion ? "" : pinAlAzar()));
 const [haceHousekeeping, setHaceHousekeeping] = useState(!!persona?.hace_housekeeping);
 const [puedeEditarMenu, setPuedeEditarMenu] = useState(!!persona?.puede_editar_menu);
 const [puedeGestionarPersonal, setPuedeGestionarPersonal] = useState(!!persona?.puede_gestionar_personal);
+const [puedeEmitirComprobantes, setPuedeEmitirComprobantes] = useState(!!persona?.puede_emitir_comprobantes);
 const [activo, setActivo] = useState(persona?.activo != null ? persona.activo : true);
 const [guardando, setGuardando] = useState(false);
 const [error, setError] = useState(null);
@@ -93,6 +94,7 @@ const payload = {
 nombre: nombre.trim(), rol: rolFinal, telefono: telefono.trim() || null,
 hace_housekeeping: haceHousekeeping, pin,
 puede_editar_menu: puedeEditarMenu, puede_gestionar_personal: puedeGestionarPersonal,
+puede_emitir_comprobantes: puedeEmitirComprobantes,
 };
 if (esEdicion) {
 await apiPut(`/api/staff/${persona.id}`, { ...payload, activo });
@@ -177,6 +179,10 @@ Puede editar el menú de Restaurant/Bar
 <input type="checkbox" checked={puedeGestionarPersonal} onChange={(e) => setPuedeGestionarPersonal(e.target.checked)} />
 Puede agregar/retirar personal (como esta pantalla)
 </label>
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={puedeEmitirComprobantes} onChange={(e) => setPuedeEmitirComprobantes(e.target.checked)} />
+Puede emitir boletas/facturas ante SUNAT (check-out y Corregir un pago anterior)
+</label>
 {esEdicion && persona.id === sesion.id && puedeGestionarPersonal === false && (
 <div style={{ fontSize: 11.5, color: "#E8B4AC" }}>
 ⚠ Te estás quitando este permiso a ti mismo — no podrás volver a entrar aquí hasta que otra persona con acceso te lo reactive.
@@ -226,6 +232,7 @@ opacity: persona.activo ? 1 : 0.55,
 {persona.hace_housekeeping && <span>· 🧹 Limpieza</span>}
 {persona.puede_editar_menu && <span>· 🍽 Menú</span>}
 {persona.puede_gestionar_personal && <span>· 👥 Personal</span>}
+{persona.puede_emitir_comprobantes && <span>· 🧾 SUNAT</span>}
 </div>
 </div>
 <div style={{ fontSize: 13, color: T.gold, fontFamily: "monospace", letterSpacing: 1, flexShrink: 0 }}>{persona.pin}</div>
