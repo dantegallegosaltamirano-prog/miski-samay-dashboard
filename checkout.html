@@ -35,6 +35,18 @@ const T = {
 };
 
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
+
+// Sesión del staff que inició sesión en index.html (localStorage es
+// compartido entre todas las páginas del mismo sitio). Se usa solo para
+// saber si esta persona tiene permiso de emitir boletas/facturas ante
+// SUNAT — no bloquea el resto del check-out si no hay sesión.
+function cargarSesion() {
+  try {
+    const raw = localStorage.getItem(SESION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
 
 // Métodos disponibles para una línea completa (incluye "mixto")
 const METODOS = [
@@ -375,6 +387,8 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
 }
 
 function CorregirPago() {
+  const sesion = cargarSesion();
+  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
   const [query, setQuery] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [resultados, setResultados] = useState([]);
@@ -694,7 +708,7 @@ function CorregirPago() {
                 {/* Comprobante electrónico — se emite automáticamente en el check-out;
                     acá se puede reintentar si falló, o corregir el número a mano. */}
                 <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 10, paddingTop: 10 }}>
-                  {comprobanteEditId === p.id ? (
+                  {comprobanteEditId === p.id && puedeEmitir ? (
                     <div>
                       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                         {[{ valor: "automatico", label: "Emitir automático" }, { valor: "manual", label: "Ingresar a mano" }].map((op) => (
@@ -746,10 +760,17 @@ function CorregirPago() {
                     </div>
                   ) : p.numero_comprobante && p.comprobante_estado === "emitido" ? (
                     <div style={{ fontSize: 12, color: T.ivoryMuted }}>
-                      <div onClick={() => abrirEdicionComprobante(p)} style={{ cursor: "pointer" }}>
-                        🧾 {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
-                        {p.sunat_status ? ` · SUNAT: ${p.sunat_status}` : ""} <span style={{ color: T.gold }}>· editar</span>
-                      </div>
+                      {puedeEmitir ? (
+                        <div onClick={() => abrirEdicionComprobante(p)} style={{ cursor: "pointer" }}>
+                          🧾 {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
+                          {p.sunat_status ? ` · SUNAT: ${p.sunat_status}` : ""} <span style={{ color: T.gold }}>· editar</span>
+                        </div>
+                      ) : (
+                        <div>
+                          🧾 {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
+                          {p.sunat_status ? ` · SUNAT: ${p.sunat_status}` : ""}
+                        </div>
+                      )}
                       {p.comprobante_pdf_url && (
                         <a href={p.comprobante_pdf_url} target="_blank" rel="noopener noreferrer"
                           style={{ display: "inline-block", marginTop: 6, fontSize: 11.5, fontWeight: 600, color: T.gold, textDecoration: "none" }}>
@@ -758,18 +779,28 @@ function CorregirPago() {
                       )}
                     </div>
                   ) : p.comprobante_estado === "error" ? (
-                    <div>
-                      <div style={{ fontSize: 11.5, color: "#D98A7D", marginBottom: 6 }}>
-                        ⚠️ No se pudo emitir automáticamente: {p.comprobante_error || "error desconocido"}
+                    puedeEmitir ? (
+                      <div>
+                        <div style={{ fontSize: 11.5, color: "#D98A7D", marginBottom: 6 }}>
+                          ⚠️ No se pudo emitir automáticamente: {p.comprobante_error || "error desconocido"}
+                        </div>
+                        <button onClick={() => abrirEdicionComprobante(p)} style={{
+                          background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600,
+                        }}>🔁 Reintentar emisión</button>
                       </div>
-                      <button onClick={() => abrirEdicionComprobante(p)} style={{
-                        background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600,
-                      }}>🔁 Reintentar emisión</button>
-                    </div>
-                  ) : (
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: "#D98A7D" }}>
+                        ⚠️ Falta emitir el comprobante — pídele a Dante, Yanet o Royer que lo haga desde aquí mismo.
+                      </div>
+                    )
+                  ) : puedeEmitir ? (
                     <button onClick={() => abrirEdicionComprobante(p)} style={{
                       background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600,
                     }}>🧾 + Agregar comprobante</button>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: T.ivoryMuted }}>
+                      🧾 Sin comprobante todavía — pídele a Dante, Yanet o Royer que lo emita.
+                    </div>
                   )}
                 </div>
               </div>
@@ -913,6 +944,8 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
 }
 
 function CheckoutPantalla() {
+  const sesion = cargarSesion();
+  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
   const [modo, setModo] = useState("checkout"); // "checkout" | "corregir"
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -1036,12 +1069,20 @@ function CheckoutPantalla() {
   // Un comprobante por cada moneda distinta que se está cobrando (no por
   // concepto) — si hospedaje y consumo terminan en la misma moneda, comparten
   // un solo número de comprobante.
+  //
+  // Solo se arma si esta persona tiene permiso de emitir boletas/facturas
+  // (sesion.puede_emitir_comprobantes) — si no lo tiene, esto queda vacío a
+  // propósito: el check-out se cierra igual (se cobra y se guarda el pago),
+  // pero SIN llamar a HaylliERP/SUNAT. Alguien con permiso lo emite después
+  // desde "Corregir un pago anterior" → "+ Agregar comprobante".
   const gruposComprobantePorMoneda = {};
-  if (hayHospedajeQueCobrar) {
-    (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
-  }
-  if (hayConsumoQueCobrar) {
-    (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+  if (puedeEmitir) {
+    if (hayHospedajeQueCobrar) {
+      (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
+    }
+    if (hayConsumoQueCobrar) {
+      (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+    }
   }
 
   const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
@@ -1105,6 +1146,13 @@ function CheckoutPantalla() {
     }
     if (!facturaDatosOk) {
       alert("Para emitir factura, ingresa un RUC de 11 dígitos y la razón social.");
+      return;
+    }
+    // Sin comprobante que emitir (sin permiso para facturar, o el adelanto
+    // ya cubrió todo) — cerrar la cuenta directo, sin mostrar una vista
+    // previa vacía de un comprobante que no se va a emitir.
+    if (!hayComprobantePorEmitir) {
+      confirmarCheckout();
       return;
     }
     setVistaPreviaComprobante(true);
@@ -1413,9 +1461,18 @@ function CheckoutPantalla() {
               </div>
             </div>
 
+            {!puedeEmitir && (hayHospedajeQueCobrar || hayConsumoQueCobrar) && (
+              <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 14 }}>
+                🧾 La boleta/factura de esta cuenta la emite después Dante, Yanet o Royer desde "Corregir un pago anterior" — tú solo cierras el cobro.
+              </div>
+            )}
+
             {/* COMPROBANTE ELECTRÓNICO — se emite AUTOMÁTICAMENTE contra SUNAT
-                (vía HaylliERP) al confirmar la vista previa. No es opcional:
-                se emite un comprobante por cada moneda distinta que se cobre. */}
+                (vía HaylliERP) al confirmar la vista previa. No es opcional
+                para quien tiene permiso de emitir (sesion.puede_emitir_comprobantes):
+                se emite un comprobante por cada moneda distinta que se cobre.
+                Quien no tiene ese permiso nunca ve esta sección — ver
+                gruposComprobantePorMoneda más arriba. */}
             {hayComprobantePorEmitir && (
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>🧾 Comprobante electrónico (SUNAT)</div>
