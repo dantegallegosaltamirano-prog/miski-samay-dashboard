@@ -10,6 +10,16 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  @media print {
+    body * { visibility: hidden; }
+    #pre-cuenta-imprimible, #pre-cuenta-imprimible * { visibility: visible; }
+    #pre-cuenta-imprimible {
+      position: absolute; left: 0; top: 0; width: 100%;
+      background: #fff !important; color: #000 !important; border: none !important; padding: 20px;
+    }
+    #pre-cuenta-imprimible * { color: #000 !important; border-color: #ccc !important; }
+  }
 </style>
 </head>
 <body>
@@ -25,21 +35,70 @@ const T = {
 };
 
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
 
+// Sesión del staff que inició sesión en index.html (localStorage es
+// compartido entre todas las páginas del mismo sitio). Se usa solo para
+// saber si esta persona tiene permiso de emitir boletas/facturas ante
+// SUNAT — no bloquea el resto del check-out si no hay sesión.
+function cargarSesion() {
+  try {
+    const raw = localStorage.getItem(SESION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+// Métodos disponibles para una línea completa (incluye "mixto")
 const METODOS = [
   { valor: "efectivo", label: "Efectivo" },
   { valor: "pos", label: "Tarjeta / POS" },
   { valor: "transferencia", label: "Transferencia" },
+  { valor: "yape", label: "Yape" },
   { valor: "mixto", label: "Mixto" },
 ];
 
+// Métodos válidos dentro de un desglose "mixto" (no se puede anidar "mixto")
+const METODOS_MIXTO = [
+  { valor: "efectivo", label: "Efectivo" },
+  { valor: "pos", label: "Tarjeta / POS" },
+  { valor: "transferencia", label: "Transferencia" },
+  { valor: "yape", label: "Yape" },
+];
+
 const idBloqueado = new URLSearchParams(window.location.search).get("id");
+
+// Enlace directo desde historial.html (lista "Cuenta cerrada, sin
+// comprobante todavía") — permite abrir "Corregir un pago anterior" con
+// la reserva ya seleccionada, sin tener que buscarla a mano.
+const corregirIdParam = new URLSearchParams(window.location.search).get("corregirId");
+const corregirNombreParam = new URLSearchParams(window.location.search).get("corregirNombre") || "";
+const corregirCodigoParam = new URLSearchParams(window.location.search).get("corregirCodigo") || "";
 
 function fmt(n) {
   return Number(n || 0).toFixed(2);
 }
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+function nuevaParteMixto() {
+  return { metodo: "efectivo", monto: "" };
+}
+
+const selectStyle = {
+  width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+  padding: "9px 12px", color: T.ivory, fontSize: 14,
+};
+const waBtn = {
+  flex: 1, textAlign: "center", background: "#25D366", color: "#0E0D0F", padding: "12px 0",
+  borderRadius: 10, textDecoration: "none", fontWeight: 700, fontSize: 13, display: "block",
+};
+function tabEstilo(activo) {
+  return {
+    flex: 1, padding: "10px 0", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700,
+    border: activo ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+    background: activo ? "rgba(201,162,75,0.15)" : T.card,
+    color: activo ? T.gold : T.ivoryMuted,
+  };
 }
 
 function BotonMoneda({ moneda, onChange }) {
@@ -76,7 +135,838 @@ function SelectorMetodo({ valor, onChange }) {
   );
 }
 
+function DesgloseMixto({ partes, onChange, total, simbolo }) {
+  const suma = partes.reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
+  const cuadra = Math.abs(suma - total) < 0.01;
+
+  function actualizarParte(i, campo, valor) {
+    const nuevas = partes.map((p, idx) => idx === i ? { ...p, [campo]: valor } : p);
+    onChange(nuevas);
+  }
+  function agregarParte() {
+    if (partes.length < 3) onChange([...partes, nuevaParteMixto()]);
+  }
+  function quitarParte(i) {
+    if (partes.length > 2) onChange(partes.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div style={{ marginTop: 10, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 8 }}>Desglose del pago mixto (2-3 partes):</div>
+      {partes.map((p, i) => (
+        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <select value={p.metodo} onChange={(e) => actualizarParte(i, "metodo", e.target.value)} style={{
+            background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 6, color: T.ivory,
+            fontSize: 12.5, padding: "7px 8px", flex: "0 0 140px",
+          }}>
+            {METODOS_MIXTO.map((m) => <option key={m.valor} value={m.valor}>{m.label}</option>)}
+          </select>
+          <div style={{ display: "flex", alignItems: "center", flex: 1, gap: 4 }}>
+            <span style={{ fontSize: 12, color: T.ivoryMuted }}>{simbolo}</span>
+            <input type="number" min="0" step="0.01" value={p.monto}
+              onChange={(e) => actualizarParte(i, "monto", e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 6,
+                padding: "7px 8px", color: T.ivory, fontSize: 13,
+              }} />
+          </div>
+          {partes.length > 2 && (
+            <button onClick={() => quitarParte(i)} style={{
+              background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: 15, padding: "0 4px",
+            }}>✕</button>
+          )}
+        </div>
+      ))}
+      {partes.length < 3 && (
+        <button onClick={agregarParte} style={{
+          background: "none", border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 6,
+          padding: "5px 10px", fontSize: 11.5, cursor: "pointer", marginBottom: 4,
+        }}>+ Agregar otra parte</button>
+      )}
+      <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: cuadra ? T.green : T.red }}>
+        Suma: {simbolo} {fmt(suma)} / {simbolo} {fmt(total)} {cuadra ? "✓" : "— no coincide con el total"}
+      </div>
+    </div>
+  );
+}
+
+function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
+  const hospedajeUsd = Number(folio.montoAlojamientoUsd) || 0;
+  const detalle = Array.isArray(folio.detalleConsumos) ? folio.detalleConsumos : [];
+  const totalConsumoSoles = detalle.reduce((a, it) => a + (Number(it.subtotal) || 0), 0);
+
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [descItem, setDescItem] = useState("");
+  const [cantItem, setCantItem] = useState("1");
+  const [precioItem, setPrecioItem] = useState("");
+  const [agregando, setAgregando] = useState(false);
+  const [errorItem, setErrorItem] = useState(null);
+  const [eliminandoId, setEliminandoId] = useState(null);
+  const [errorEliminar, setErrorEliminar] = useState(null);
+
+  const puedeAgregar = descItem.trim().length > 0 && Number(cantItem) > 0 && Number(precioItem) > 0;
+
+  async function eliminarConsumo(it) {
+    if (it.id == null) return;
+    const ok = window.confirm(`¿Quitar "${it.cantidad}x ${it.descripcion}" de la cuenta? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    setEliminandoId(it.id);
+    setErrorEliminar(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/consumos/${it.id}`, {
+        method: "DELETE",
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo quitar el consumo");
+      onFolioActualizado();
+    } catch (e) {
+      setErrorEliminar(e.message);
+    } finally {
+      setEliminandoId(null);
+    }
+  }
+
+  async function agregarFrigobar() {
+    if (!puedeAgregar) {
+      setErrorItem("Completa la descripción, cantidad y precio unitario.");
+      return;
+    }
+    setAgregando(true);
+    setErrorItem(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/consumos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoria: "frigobar",
+          descripcion: descItem.trim(),
+          cantidad: Number(cantItem),
+          precioUnitario: round2(Number(precioItem)),
+          monto: round2(Number(cantItem) * Number(precioItem)),
+          estado: "entregado",
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo agregar el consumo");
+      setDescItem(""); setCantItem("1"); setPrecioItem(""); setMostrarForm(false);
+      onFolioActualizado();
+    } catch (e) {
+      setErrorItem(e.message);
+    } finally {
+      setAgregando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div id="pre-cuenta-imprimible" style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Miski Samay Domo Boutique</div>
+          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>Pre-cuenta — {reservaSel.codigo} · {reservaSel.nombre_completo || "Por confirmar"}</div>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🏕️ Hospedaje</div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
+          <span>Estadía completa</span>
+          <span style={{ fontWeight: 700, color: T.gold }}>US$ {fmt(hospedajeUsd)}</span>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🍽️ Consumo</div>
+        {detalle.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginBottom: 16 }}>Sin consumos registrados.</div>
+        ) : (
+          <div style={{ marginBottom: 8 }}>
+            {detalle.map((it, i) => (
+              <div key={it.id ?? i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, padding: "4px 0" }}>
+                <span>
+                  {it.categoria === "frigobar" ? `${it.cantidad}x ` : ""}{it.descripcion}{it.categoria === "frigobar" ? " (frigobar)" : ""}
+                  {it.creadoEn && (
+                    <span style={{ display: "block", fontSize: 10.5, color: T.ivoryMuted }}>
+                      {new Date(it.creadoEn).toLocaleDateString("es-PE")}
+                    </span>
+                  )}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>S/ {fmt(it.subtotal)}</span>
+                  {it.id != null && (
+                    <button
+                      className="no-imprimir"
+                      onClick={() => eliminarConsumo(it)}
+                      disabled={eliminandoId === it.id}
+                      title="Quitar este consumo de la cuenta"
+                      style={{
+                        background: "none", border: "none",
+                        color: eliminandoId === it.id ? T.ivoryMuted : "#D98A7D",
+                        cursor: eliminandoId === it.id ? "not-allowed" : "pointer",
+                        fontSize: 14, fontWeight: 700, padding: "0 2px", lineHeight: 1,
+                      }}
+                    >
+                      {eliminandoId === it.id ? "…" : "✕"}
+                    </button>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {errorEliminar && (
+          <div className="no-imprimir" style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>
+            {errorEliminar}
+          </div>
+        )}
+        {detalle.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 700, borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 8, marginBottom: 16 }}>
+            <span>Total consumo</span>
+            <span style={{ color: T.gold }}>S/ {fmt(totalConsumoSoles)}</span>
+          </div>
+        )}
+
+        {Number(folio.adelantoPagado) > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.ivoryMuted, borderTop: `1px solid ${T.cardBorder}`, paddingTop: 8 }}>
+            <span>Adelanto ya pagado</span>
+            <span>US$ {fmt(folio.adelantoPagado)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="no-imprimir" style={{ marginBottom: 16 }}>
+        {!mostrarForm ? (
+          <button onClick={() => setMostrarForm(true)} style={{
+            width: "100%", background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted,
+            borderRadius: 10, padding: "10px 0", fontWeight: 600, fontSize: 12.5, cursor: "pointer",
+          }}>
+            + Agregar consumo no reportado (frigobar, etc.)
+          </button>
+        ) : (
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Agregar consumo de frigobar u otro no reportado:</div>
+            <input value={descItem} onChange={(e) => setDescItem(e.target.value)}
+              placeholder="Ej: Cerveza, Gaseosa, Agua"
+              style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Cantidad</div>
+                <input type="number" min="1" step="1" value={cantItem} onChange={(e) => setCantItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Precio unitario (S/)</div>
+                <input type="number" min="0" step="0.01" value={precioItem} onChange={(e) => setPrecioItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+            </div>
+            {errorItem && (
+              <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>
+                {errorItem}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setMostrarForm(false); setErrorItem(null); }} style={{
+                flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                borderRadius: 8, padding: "9px 0", fontSize: 12.5, cursor: "pointer",
+              }}>Cancelar</button>
+              <button onClick={agregarFrigobar} disabled={agregando} style={{
+                flex: 1, background: agregando ? T.cardBorder : T.gold, color: agregando ? T.ivoryMuted : "#1C1A20",
+                border: "none", borderRadius: 8, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: agregando ? "not-allowed" : "pointer",
+              }}>{agregando ? "Agregando..." : "Agregar a la cuenta"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={() => window.print()} style={{
+          flex: 1, background: T.card, border: `1px solid ${T.cardBorder}`, color: T.ivory,
+          borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+        }}>
+          🖨️ Imprimir
+        </button>
+        <button onClick={onContinuar} style={{
+          flex: 1, background: T.gold, color: "#1C1A20", border: "none",
+          borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+        }}>
+          Continuar a cobro →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigoInicial } = {}) {
+  const sesion = cargarSesion();
+  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
+  const [query, setQuery] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [resultados, setResultados] = useState([]);
+  const [busquedaHecha, setBusquedaHecha] = useState(false);
+
+  const [reservaSel, setReservaSel] = useState(null);
+  const [pagos, setPagos] = useState([]);
+  const [cargandoPagos, setCargandoPagos] = useState(false);
+
+  const [pagoSel, setPagoSel] = useState(null);
+
+  const [staffList, setStaffList] = useState([]);
+  const [correctorId, setCorrectorId] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [monto, setMonto] = useState("");
+  const [moneda, setMoneda] = useState("USD");
+  const [metodo, setMetodo] = useState("efectivo");
+  const [tipoCambio, setTipoCambio] = useState("");
+  const [mixto, setMixto] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
+  const [enviando, setEnviando] = useState(false);
+  const [errorForm, setErrorForm] = useState(null);
+  const [correccionOk, setCorreccionOk] = useState(null);
+
+  // Edición rápida del comprobante electrónico (boleta/factura) de un pago
+  // ya cerrado — no requiere gerencia ni motivo, es solo anotar el número
+  // que se emitió a mano en la plataforma del proveedor (Keyfacil).
+  const [comprobanteEditId, setComprobanteEditId] = useState(null);
+  const [comprobanteEditTipo, setComprobanteEditTipo] = useState("boleta");
+  const [comprobanteEditNumero, setComprobanteEditNumero] = useState("");
+  const [comprobanteEditModo, setComprobanteEditModo] = useState("automatico"); // "automatico" | "manual"
+  const [comprobanteEditRuc, setComprobanteEditRuc] = useState("");
+  const [comprobanteEditRazonSocial, setComprobanteEditRazonSocial] = useState("");
+  const [guardandoComprobante, setGuardandoComprobante] = useState(false);
+  const [errorComprobante, setErrorComprobante] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/staff`).then(r => r.json()).then(setStaffList).catch(() => {});
+  }, []);
+
+  // Si se llegó desde el enlace directo de historial.html ("Cuenta cerrada,
+  // sin comprobante todavía"), salta la búsqueda manual y abre de una vez
+  // los pagos de esa reserva.
+  useEffect(() => {
+    if (corregirIdInicial) {
+      seleccionarReserva({
+        reserva_id: corregirIdInicial,
+        codigo: corregirCodigoInicial,
+        nombre_completo: corregirNombreInicial,
+      });
+    }
+  }, [corregirIdInicial]);
+
+  function abrirEdicionComprobante(p) {
+    setComprobanteEditId(p.id);
+    setComprobanteEditTipo(p.tipo_comprobante || "boleta");
+    setComprobanteEditNumero(p.numero_comprobante || "");
+    setComprobanteEditModo("automatico");
+    setComprobanteEditRuc(p.factura_ruc || "");
+    setComprobanteEditRazonSocial(p.factura_razon_social || "");
+    setErrorComprobante(null);
+  }
+
+  // Reintenta (o dispara por primera vez) la emisión AUTOMÁTICA real ante
+  // SUNAT vía HaylliERP para un pago ya cerrado — se usa cuando la emisión
+  // del check-out falló, o para pagos anteriores a esta función.
+  async function emitirComprobanteAutomatico(pagoId) {
+    if (comprobanteEditTipo === "factura" && (comprobanteEditRuc.trim().length !== 11 || !comprobanteEditRazonSocial.trim())) {
+      setErrorComprobante("Para factura, ingresa un RUC de 11 dígitos y la razón social.");
+      return;
+    }
+    setGuardandoComprobante(true);
+    setErrorComprobante(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoId}/emitir-comprobante`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipoComprobante: comprobanteEditTipo,
+          facturaRuc: comprobanteEditTipo === "factura" ? comprobanteEditRuc.trim() : undefined,
+          facturaRazonSocial: comprobanteEditTipo === "factura" ? comprobanteEditRazonSocial.trim() : undefined,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo emitir el comprobante");
+      if (!data.ok) throw new Error(data.error || "SUNAT no aceptó el comprobante");
+      // El comprobante puede haberse emitido agrupado con otro pago de la
+      // misma reserva y moneda (regla de "uno por moneda"), así que en vez
+      // de parchar solo este pago en el estado local, recargamos la lista
+      // completa para que el/los pago(s) hermano(s) también se vean al día.
+      if (reservaSel) await seleccionarReserva(reservaSel);
+      setComprobanteEditId(null);
+    } catch (e) {
+      setErrorComprobante(e.message);
+    } finally {
+      setGuardandoComprobante(false);
+    }
+  }
+
+  async function guardarComprobante(pagoId) {
+    if (!comprobanteEditNumero.trim()) {
+      setErrorComprobante("Escribe el número de comprobante.");
+      return;
+    }
+    setGuardandoComprobante(true);
+    setErrorComprobante(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoId}/comprobante`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipoComprobante: comprobanteEditTipo, numeroComprobante: comprobanteEditNumero.trim() }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo guardar el comprobante");
+      setPagos((prev) => prev.map((p) => p.id === pagoId
+        ? { ...p, tipo_comprobante: comprobanteEditTipo, numero_comprobante: comprobanteEditNumero.trim() }
+        : p));
+      setComprobanteEditId(null);
+    } catch (e) {
+      setErrorComprobante(e.message);
+    } finally {
+      setGuardandoComprobante(false);
+    }
+  }
+
+  const staffGerencia = staffList.filter(s => s.rol === "gerencia");
+
+  async function buscar() {
+    if (!query.trim()) return;
+    setBuscando(true);
+    setBusquedaHecha(true);
+    setReservaSel(null);
+    setPagos([]);
+    setPagoSel(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/reservas/buscar-cerradas?q=${encodeURIComponent(query.trim())}`);
+      const data = await r.json();
+      setResultados(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setResultados([]);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  async function seleccionarReserva(r) {
+    setReservaSel(r);
+    setPagoSel(null);
+    setCargandoPagos(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${r.reserva_id}/pagos-activos`);
+      const data = await resp.json();
+      setPagos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setPagos([]);
+    } finally {
+      setCargandoPagos(false);
+    }
+  }
+
+  function seleccionarPago(p) {
+    setPagoSel(p);
+    setMonto(fmt(p.monto));
+    setMoneda(p.moneda);
+    setMetodo(p.metodo_pago);
+    setTipoCambio(p.tipo_cambio_usado ? String(p.tipo_cambio_usado) : "");
+    if (p.metodo_pago === "mixto" && p.detalle_pago_mixto) {
+      const partes = typeof p.detalle_pago_mixto === "string" ? JSON.parse(p.detalle_pago_mixto) : p.detalle_pago_mixto;
+      setMixto(Array.isArray(partes) && partes.length >= 2
+        ? partes.map(x => ({ metodo: x.metodo, monto: String(x.monto) }))
+        : [nuevaParteMixto(), nuevaParteMixto()]);
+    } else {
+      setMixto([nuevaParteMixto(), nuevaParteMixto()]);
+    }
+    setMotivo("");
+    setErrorForm(null);
+    setCorreccionOk(null);
+  }
+
+  const usaTipoCambio = pagoSel && (pagoSel.concepto === "hospedaje" ? moneda === "PEN" : moneda === "USD");
+  const sumaMixto = mixto.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const mixtoOk = metodo !== "mixto" || Math.abs(sumaMixto - round2(Number(monto) || 0)) < 0.01;
+  const tipoCambioOk = !usaTipoCambio || Number(tipoCambio) > 0;
+  const puedeCorregir = pagoSel && correctorId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOk;
+
+  async function corregirPago() {
+    if (!puedeCorregir) {
+      setErrorForm("Completa todos los campos: quién corrige, motivo, monto válido y desglose correcto.");
+      return;
+    }
+    setEnviando(true);
+    setErrorForm(null);
+    const nuevoPago = {
+      concepto: pagoSel.concepto,
+      monto: round2(Number(monto)),
+      moneda,
+      metodoPago: metodo,
+    };
+    if (usaTipoCambio) nuevoPago.tipoCambio = Number(tipoCambio);
+    if (metodo === "mixto") nuevoPago.detalleMixto = mixto.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${pagoSel.id}/corregir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: motivo.trim(), staffId: correctorId, nuevoPago }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo corregir el pago");
+      setCorreccionOk({ montoTotal: data.montoTotal });
+    } catch (e) {
+      setErrorForm(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (correccionOk) {
+    return (
+      <div>
+        <div style={{ background: "rgba(107,143,113,0.12)", border: `1px solid ${T.green}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, color: T.green, marginBottom: 6 }}>✓ Pago corregido</div>
+          <div style={{ fontSize: 13, color: T.ivoryMuted }}>
+            El pago original quedó anulado (se conserva en el historial) y se creó el pago corregido
+            {correccionOk.montoTotal != null ? ` por ${moneda === "USD" ? "US$" : "S/."} ${fmt(correccionOk.montoTotal)}` : ""}.
+          </div>
+        </div>
+        <button onClick={() => { setReservaSel(null); setPagoSel(null); setCorreccionOk(null); setQuery(""); setResultados([]); setBusquedaHecha(false); }}
+          style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10, padding: "12px 0", width: "100%", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+          Buscar otra reserva
+        </button>
+      </div>
+    );
+  }
+
+  if (pagoSel) {
+    return (
+      <div>
+        <button onClick={() => setPagoSel(null)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12 }}>← Elegir otro pago</button>
+
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, textTransform: "uppercase", marginBottom: 4 }}>Pago original</div>
+          <div style={{ fontSize: 14, fontWeight: 700, textTransform: "capitalize" }}>
+            {pagoSel.concepto} — {pagoSel.moneda === "USD" ? "US$" : "S/."} {fmt(pagoSel.monto)} ({METODOS.find(m => m.valor === pagoSel.metodo_pago)?.label})
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién corrige este pago? (solo gerencia)</div>
+        <select value={correctorId} onChange={(e) => setCorrectorId(e.target.value)} style={selectStyle}>
+          <option value="">Selecciona...</option>
+          {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Motivo de la corrección</div>
+        <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2}
+          placeholder="Ej: se cobró en efectivo pero fue transferencia"
+          style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Nuevo monto</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 14, color: T.ivoryMuted }}>{moneda === "USD" ? "US$" : "S/."}</span>
+          <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}
+            style={{ flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", color: T.ivory, fontSize: 14 }} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted }}>Nueva moneda:</div>
+          <BotonMoneda moneda={moneda} onChange={setMoneda} />
+        </div>
+
+        {usaTipoCambio && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>
+              Tipo de cambio ({pagoSel.concepto === "hospedaje" ? "venta" : "compra"}) — S/ por US$1:
+            </span>
+            <input type="number" min="0" step="0.001" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioOk ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Nuevo método de pago:</div>
+        <SelectorMetodo valor={metodo} onChange={setMetodo} />
+        {metodo === "mixto" && (
+          <DesgloseMixto partes={mixto} onChange={setMixto} total={round2(Number(monto) || 0)} simbolo={moneda === "USD" ? "US$" : "S/."} />
+        )}
+
+        {errorForm && (
+          <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, margin: "14px 0" }}>
+            {errorForm}
+          </div>
+        )}
+
+        <button onClick={corregirPago} disabled={enviando} style={{
+          width: "100%", background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
+          border: "none", borderRadius: 10, padding: "14px 0", fontSize: 14, fontWeight: 700,
+          cursor: enviando ? "not-allowed" : "pointer", marginTop: 16,
+        }}>
+          {enviando ? "Corrigiendo..." : "Corregir pago"}
+        </button>
+      </div>
+    );
+  }
+
+  if (reservaSel) {
+    return (
+      <div>
+        <button onClick={() => setReservaSel(null)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12 }}>← Elegir otra reserva</button>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{reservaSel.codigo} — {reservaSel.nombre_completo || "Por confirmar"}</div>
+        {cargandoPagos ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando pagos...</div>
+        ) : pagos.length === 0 ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Esta reserva no tiene pagos activos para corregir.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pagos.map(p => (
+              <div key={p.id} style={{
+                padding: "12px 14px", borderRadius: 10,
+                border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory,
+              }}>
+                <div onClick={() => seleccionarPago(p)} style={{ cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{p.concepto}</span>
+                    <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>
+                    {METODOS.find(m => m.valor === p.metodo_pago)?.label} · {p.cerrado_en ? new Date(p.cerrado_en).toLocaleDateString("es-PE") : ""}
+                  </div>
+                </div>
+
+                {/* Comprobante electrónico — se emite automáticamente en el check-out;
+                    acá se puede reintentar si falló, o corregir el número a mano. */}
+                <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 10, paddingTop: 10 }}>
+                  {comprobanteEditId === p.id && puedeEmitir ? (
+                    <div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                        {[{ valor: "automatico", label: "Emitir automático" }, { valor: "manual", label: "Ingresar a mano" }].map((op) => (
+                          <button key={op.valor} onClick={() => setComprobanteEditModo(op.valor)} style={{
+                            flex: 1, padding: "6px 0", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                            border: comprobanteEditModo === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                            background: comprobanteEditModo === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+                            color: comprobanteEditModo === op.valor ? T.gold : T.ivoryMuted,
+                          }}>{op.label}</button>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                        {[{ valor: "boleta", label: "Boleta" }, { valor: "factura", label: "Factura" }].map((op) => (
+                          <button key={op.valor} onClick={() => setComprobanteEditTipo(op.valor)} style={{
+                            flex: 1, padding: "6px 0", borderRadius: 8, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                            border: comprobanteEditTipo === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                            background: comprobanteEditTipo === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+                            color: comprobanteEditTipo === op.valor ? T.gold : T.ivoryMuted,
+                          }}>{op.label}</button>
+                        ))}
+                      </div>
+                      {comprobanteEditModo === "manual" ? (
+                        <input value={comprobanteEditNumero} onChange={(e) => setComprobanteEditNumero(e.target.value)}
+                          placeholder="Ej: B001-00000045"
+                          style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
+                      ) : comprobanteEditTipo === "factura" ? (
+                        <React.Fragment>
+                          <input value={comprobanteEditRuc} maxLength={11} onChange={(e) => setComprobanteEditRuc(e.target.value.replace(/\D/g, ""))}
+                            placeholder="RUC (11 dígitos)"
+                            style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 6 }} />
+                          <input value={comprobanteEditRazonSocial} onChange={(e) => setComprobanteEditRazonSocial(e.target.value)}
+                            placeholder="Razón social"
+                            style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
+                        </React.Fragment>
+                      ) : null}
+                      {errorComprobante && (
+                        <div style={{ color: "#D98A7D", fontSize: 11.5, marginBottom: 8 }}>{errorComprobante}</div>
+                      )}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setComprobanteEditId(null)} style={{
+                          flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                          borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer",
+                        }}>Cancelar</button>
+                        <button onClick={() => comprobanteEditModo === "manual" ? guardarComprobante(p.id) : emitirComprobanteAutomatico(p.id)} disabled={guardandoComprobante} style={{
+                          flex: 1, background: guardandoComprobante ? T.cardBorder : T.gold, color: guardandoComprobante ? T.ivoryMuted : "#1C1A20",
+                          border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: guardandoComprobante ? "not-allowed" : "pointer",
+                        }}>{guardandoComprobante ? "Procesando..." : (comprobanteEditModo === "manual" ? "Guardar" : "Emitir")}</button>
+                      </div>
+                    </div>
+                  ) : p.numero_comprobante && p.comprobante_estado === "emitido" ? (
+                    <div style={{ fontSize: 12, color: T.ivoryMuted }}>
+                      {puedeEmitir ? (
+                        <div onClick={() => abrirEdicionComprobante(p)} style={{ cursor: "pointer" }}>
+                          🧾 {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
+                          {p.sunat_status ? ` · SUNAT: ${p.sunat_status}` : ""} <span style={{ color: T.gold }}>· editar</span>
+                        </div>
+                      ) : (
+                        <div>
+                          🧾 {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
+                          {p.sunat_status ? ` · SUNAT: ${p.sunat_status}` : ""}
+                        </div>
+                      )}
+                      {p.comprobante_pdf_url && (
+                        <a href={p.comprobante_pdf_url} target="_blank" rel="noopener noreferrer"
+                          style={{ display: "inline-block", marginTop: 6, fontSize: 11.5, fontWeight: 600, color: T.gold, textDecoration: "none" }}>
+                          🖨️ Imprimir
+                        </a>
+                      )}
+                    </div>
+                  ) : p.comprobante_estado === "error" ? (
+                    puedeEmitir ? (
+                      <div>
+                        <div style={{ fontSize: 11.5, color: "#D98A7D", marginBottom: 6 }}>
+                          ⚠️ No se pudo emitir automáticamente: {p.comprobante_error || "error desconocido"}
+                        </div>
+                        <button onClick={() => abrirEdicionComprobante(p)} style={{
+                          background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600,
+                        }}>🔁 Reintentar emisión</button>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: "#D98A7D" }}>
+                        ⚠️ Falta emitir el comprobante — pídele a Dante, Yanet o Royer que lo haga desde aquí mismo.
+                      </div>
+                    )
+                  ) : puedeEmitir ? (
+                    <button onClick={() => abrirEdicionComprobante(p)} style={{
+                      background: "none", border: "none", color: T.gold, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600,
+                    }}>🧾 + Agregar comprobante</button>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: T.ivoryMuted }}>
+                      🧾 Sin comprobante todavía — pídele a Dante, Yanet o Royer que lo emita.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Buscar por nombre de huésped o código</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }}
+          placeholder="Ej: Heather o D1"
+          style={{ flex: 1, background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 12px", color: T.ivory, fontSize: 14 }} />
+        <button onClick={buscar} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "0 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Buscar</button>
+      </div>
+      {buscando && <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Buscando...</div>}
+      {!buscando && busquedaHecha && resultados.length === 0 && (
+        <div style={{ color: T.ivoryMuted, fontSize: 13 }}>No se encontraron reservas cerradas con ese criterio.</div>
+      )}
+      {!buscando && resultados.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {resultados.map(r => (
+            <button key={r.reserva_id} onClick={() => seleccionarReserva(r)} style={{
+              textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+              border: `1px solid ${T.cardBorder}`, background: T.card, color: T.ivory, fontSize: 13.5,
+            }}>
+              <strong>{r.codigo}</strong> — {r.nombre_completo || "Por confirmar"}
+              <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 2 }}>
+                Salida: {r.fecha_salida ? new Date(r.fecha_salida).toLocaleDateString("es-PE") : "—"}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Vista previa del comprobante antes de emitirlo de verdad ante SUNAT —
+// muestra exactamente lo que se va a enviar (cliente, ítems, montos) para
+// que el staff confirme que está correcto antes del paso final de
+// "guardar e imprimir" (que dispara la emisión real vía HaylliERP).
+function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRazonSocial, pagos, descripcionItemPreview, enviando, errorEnvio, onVolver, onConfirmar }) {
+  const cliente = folio?.cliente || {};
+  const lineasConComprobante = pagos.filter(p => p.tipoComprobante);
+  const porMoneda = {};
+  lineasConComprobante.forEach(p => {
+    (porMoneda[p.moneda] = porMoneda[p.moneda] || []).push(p);
+  });
+
+  return (
+    <div>
+      <button onClick={onVolver} disabled={enviando} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: enviando ? "default" : "pointer", marginBottom: 14, padding: 0 }}>
+        ← Volver a editar
+      </button>
+
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Vista previa del comprobante</div>
+      <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 16 }}>
+        Revisa que los datos estén correctos — al confirmar se emite de inmediato ante SUNAT, no se puede deshacer.
+      </div>
+
+      {Object.keys(porMoneda).map((moneda) => {
+        const lineas = porMoneda[moneda];
+        const total = lineas.reduce((a, p) => a + Number(p.monto || 0), 0);
+        // El monto que cobramos ya incluye IGV — se envía a HaylliERP como
+        // prices_include_igv:true, así que aquí desglosamos con la misma
+        // tasa configurada en el servidor (18% por defecto; puede ser
+        // 10.5%/15% si aplica el beneficio MYPE de Ley 31556/32219).
+        const tasaIgv = Number(folio?.igvPorcentaje) || 18;
+        const opGravada = total / (1 + tasaIgv / 100);
+        const igv = total - opGravada;
+        const simbolo = moneda === "USD" ? "US$" : "S/.";
+        const esFactura = tipoComprobante === "factura";
+        return (
+          <div key={moneda} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{esFactura ? "FACTURA" : "BOLETA"} · Serie {esFactura ? "F001" : "B001"}</div>
+              <div style={{ fontSize: 11, color: T.ivoryMuted }}>{moneda}</div>
+            </div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>Emisor</div>
+            <div style={{ fontSize: 13, marginBottom: 10 }}>SETUMIS S.R.L. — RUC 20605979034</div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>Cliente</div>
+            <div style={{ fontSize: 13, marginBottom: 10 }}>
+              {esFactura ? (
+                <React.Fragment>{facturaRazonSocial || "(sin razón social)"} — RUC {facturaRuc || "(sin RUC)"}</React.Fragment>
+              ) : (
+                <React.Fragment>{cliente.nombreCompleto || "(sin nombre)"} — {cliente.tipoDocumento || "Doc."} {cliente.numeroDocumento || "?"}</React.Fragment>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 10 }}>
+              {lineas.map((p, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                  <span style={{ color: T.ivoryMuted }}>{descripcionItemPreview(p.concepto)}</span>
+                  <span>{simbolo} {fmt(p.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>(incl. IGV)</span></span>
+                </div>
+              ))}
+            </div>
+            <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 3 }}>
+                <span>Op. gravada</span>
+                <span>{simbolo} {fmt(opGravada)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
+                <span>IGV ({tasaIgv}%)</span>
+                <span>{simbolo} {fmt(igv)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                <span>Total</span>
+                <span style={{ color: T.gold }}>{simbolo} {fmt(total)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {Object.keys(porMoneda).length > 1 && (
+        <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 14 }}>
+          ℹ️ Son 2 comprobantes independientes (uno por moneda) — ambos usan la misma serie ({tipoComprobante === "factura" ? "F001" : "B001"}) porque la serie identifica el TIPO de comprobante, no la moneda; HaylliERP les asigna números correlativos distintos automáticamente (ej. -00000501 y -00000502).
+        </div>
+      )}
+
+      {errorEnvio && (
+        <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
+          Error: {errorEnvio}
+        </div>
+      )}
+
+      <button onClick={onConfirmar} disabled={enviando} style={{
+        width: "100%", background: enviando ? T.cardBorder : T.gold,
+        color: enviando ? T.ivoryMuted : "#1C1A20", border: "none", borderRadius: 10,
+        padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: enviando ? "not-allowed" : "pointer",
+      }}>
+        {enviando ? "Emitiendo y cerrando cuenta..." : "✓ Confirmar, guardar e imprimir"}
+      </button>
+    </div>
+  );
+}
+
 function CheckoutPantalla() {
+  const sesion = cargarSesion();
+  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
+  const [modo, setModo] = useState(corregirIdParam ? "corregir" : "checkout"); // "checkout" | "corregir"
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
@@ -95,9 +985,28 @@ function CheckoutPantalla() {
   const [metodoHospedaje, setMetodoHospedaje] = useState("efectivo");
   const [metodoConsumo, setMetodoConsumo] = useState("efectivo");
 
+  // Tipos de cambio editables por línea (solo se usan/mostrarán si la
+  // moneda de cobro elegida no coincide con la moneda nativa del concepto).
+  const [tipoCambioHospedaje, setTipoCambioHospedaje] = useState(0); // usado si monedaHospedaje === "PEN" (venta, "X")
+  const [tipoCambioConsumo, setTipoCambioConsumo] = useState(0);     // usado si monedaConsumo === "USD" (compra, "Z")
+
+  const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+  const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
+  // Comprobante electrónico (SUNAT) — se emite AUTOMÁTICAMENTE al cerrar la
+  // cuenta, vía la integración con HaylliERP (server.js llama a su API). Un
+  // comprobante por cada moneda distinta que se esté cobrando (no por
+  // concepto) — ver regla de negocio en el proyecto. Antes de emitir se
+  // muestra una vista previa para que el staff confirme que está correcto.
+  const [tipoComprobante, setTipoComprobante] = useState("boleta");
+  const [facturaRuc, setFacturaRuc] = useState("");
+  const [facturaRazonSocial, setFacturaRazonSocial] = useState("");
+  const [vistaPreviaComprobante, setVistaPreviaComprobante] = useState(false);
+
   const [enviando, setEnviando] = useState(false);
   const [resultadoOk, setResultadoOk] = useState(null);
   const [errorEnvio, setErrorEnvio] = useState(null);
+  const [preCuentaVista, setPreCuentaVista] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/domos/estado-hoy`)
@@ -115,11 +1024,10 @@ function CheckoutPantalla() {
       .catch(() => setCargando(false));
   }, []);
 
-  useEffect(() => {
+  function cargarFolio() {
     if (!reservaSel) return;
     setCargandoFolio(true);
     setErrorFolio(null);
-    setFolio(null);
     fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/folio`)
       .then(r => r.json())
       .then(data => {
@@ -128,45 +1036,150 @@ function CheckoutPantalla() {
         const adelanto = Number(data.adelantoPagado) || 0;
         setAdelantoMonto(adelanto);
         setAplicarAdelantoA(adelanto > 0 ? "hospedaje" : "ninguno");
+        const tc = Number(data.tipoCambio) || 0;
+        setTipoCambioHospedaje(tc);
+        setTipoCambioConsumo(tc);
         setCargandoFolio(false);
       })
       .catch(() => { setErrorFolio("No se pudo cargar el folio"); setCargandoFolio(false); });
+  }
+
+  useEffect(() => {
+    if (!reservaSel) return;
+    setFolio(null);
+    setPreCuentaVista(false);
+    cargarFolio();
   }, [reservaSel]);
 
-  const tipoCambio = folio?.tipoCambio || null;
+  const tipoCambioRef = folio?.tipoCambio || null; // solo referencial, para desglose por categoría y adelanto
   const hospedajeUsd = folio ? Number(folio.montoAlojamientoUsd) || 0 : 0;
-  const hospedajeSoles = tipoCambio ? hospedajeUsd * tipoCambio : 0;
+  const hospedajeSoles = tipoCambioRef ? hospedajeUsd * tipoCambioRef : 0;
   const consumoSoles = folio ? Number(folio.totalConsumosSoles) || 0 : 0;
-  const consumoUsd = tipoCambio ? consumoSoles / tipoCambio : 0;
+  const consumoUsd = tipoCambioRef ? consumoSoles / tipoCambioRef : 0;
 
   // El adelanto siempre viene y se edita en USD.
   const adelantoUsd = adelantoMonto;
-  const adelantoSoles = tipoCambio ? adelantoUsd * tipoCambio : 0;
+  const adelantoSoles = tipoCambioRef ? adelantoUsd * tipoCambioRef : 0;
 
   const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsd) : hospedajeUsd;
   const saldoConsumoSoles = aplicarAdelantoA === "consumo" ? Math.max(0, consumoSoles - adelantoSoles) : consumoSoles;
-  const saldoHospedajeSoles = tipoCambio ? saldoHospedajeUsd * tipoCambio : 0;
-  const saldoConsumoUsd = tipoCambio ? saldoConsumoSoles / tipoCambio : 0;
 
-  const montoCobroHospedaje = monedaHospedaje === "USD" ? saldoHospedajeUsd : saldoHospedajeSoles;
-  const montoCobroConsumo = monedaConsumo === "PEN" ? saldoConsumoSoles : saldoConsumoUsd;
+  // Monto final a cobrar por línea, según la moneda elegida.
+  // Si coincide con la moneda nativa del concepto, no requiere tipo de cambio.
+  const usaTipoCambioHospedaje = monedaHospedaje === "PEN"; // hospedaje nativo = USD
+  const usaTipoCambioConsumo = monedaConsumo === "USD";     // consumo nativo = PEN
 
-  const hayHospedajeQueCobrar = montoCobroHospedaje > 0.009;
-  const hayConsumoQueCobrar = montoCobroConsumo > 0.009;
+  const montoCobroHospedaje = usaTipoCambioHospedaje
+    ? saldoHospedajeUsd * (Number(tipoCambioHospedaje) || 0)
+    : saldoHospedajeUsd;
+  const montoCobroConsumo = usaTipoCambioConsumo
+    ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSoles / Number(tipoCambioConsumo) : 0)
+    : saldoConsumoSoles;
 
-  async function confirmarCheckout() {
-    const pagos = [];
+  // Si hay saldo pendiente (después del adelanto) es independiente de la moneda
+  // elegida para cobrarlo y de si ya se llenó el tipo de cambio — antes esto se
+  // calculaba sobre el monto YA convertido, así que al elegir cobrar el
+  // hospedaje en soles (antes de escribir el tipo de cambio) el monto convertido
+  // era S/.0.00, esto se leía como "no hay nada que cobrar", el campo de tipo de
+  // cambio se ocultaba (dependía de esta misma bandera) y aparecía "Cubierto por
+  // adelanto" aunque sí quedaba saldo real por cobrar — un candado sin llave.
+  const hayHospedajeQueCobrar = saldoHospedajeUsd > 0.009;
+  const hayConsumoQueCobrar = saldoConsumoSoles > 0.009;
+
+  // Un comprobante por cada moneda distinta que se está cobrando (no por
+  // concepto) — si hospedaje y consumo terminan en la misma moneda, comparten
+  // un solo número de comprobante.
+  //
+  // Solo se arma si esta persona tiene permiso de emitir boletas/facturas
+  // (sesion.puede_emitir_comprobantes) — si no lo tiene, esto queda vacío a
+  // propósito: el check-out se cierra igual (se cobra y se guarda el pago),
+  // pero SIN llamar a HaylliERP/SUNAT. Alguien con permiso lo emite después
+  // desde "Corregir un pago anterior" → "+ Agregar comprobante".
+  const gruposComprobantePorMoneda = {};
+  if (puedeEmitir) {
     if (hayHospedajeQueCobrar) {
-      pagos.push({ concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje });
+      (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
     }
     if (hayConsumoQueCobrar) {
-      pagos.push({ concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo });
+      (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
     }
+  }
+
+  const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const sumaMixtoConsumo = mixtoConsumo.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const mixtoHospedajeOk = metodoHospedaje !== "mixto" || !hayHospedajeQueCobrar || Math.abs(sumaMixtoHospedaje - round2(montoCobroHospedaje)) < 0.01;
+  const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
+
+  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
+  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
+
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+
+  function construirPagos() {
+    const pagos = [];
+    if (hayHospedajeQueCobrar) {
+      const linea = { concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje };
+      if (usaTipoCambioHospedaje) linea.tipoCambio = Number(tipoCambioHospedaje);
+      if (metodoHospedaje === "mixto") {
+        linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      }
+      if (gruposComprobantePorMoneda[monedaHospedaje]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") {
+          linea.facturaRuc = facturaRuc.trim();
+          linea.facturaRazonSocial = facturaRazonSocial.trim();
+        }
+      }
+      pagos.push(linea);
+    }
+    if (hayConsumoQueCobrar) {
+      const linea = { concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo };
+      if (usaTipoCambioConsumo) linea.tipoCambio = Number(tipoCambioConsumo);
+      if (metodoConsumo === "mixto") {
+        linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      }
+      if (gruposComprobantePorMoneda[monedaConsumo]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") {
+          linea.facturaRuc = facturaRuc.trim();
+          linea.facturaRazonSocial = facturaRazonSocial.trim();
+        }
+      }
+      pagos.push(linea);
+    }
+    return pagos;
+  }
+
+  const hayComprobantePorEmitir = Object.keys(gruposComprobantePorMoneda).length > 0;
+  const facturaDatosOk = tipoComprobante !== "factura" || !hayComprobantePorEmitir
+    || (facturaRuc.trim().length === 11 && facturaRazonSocial.trim().length > 0);
+
+  function irAVistaPrevia() {
+    const pagos = construirPagos();
     if (pagos.length === 0) {
       alert("No hay saldo pendiente por cobrar (el adelanto cubre todo). Contacta soporte si esto no es correcto.");
       return;
     }
+    if (!puedeEnviar) {
+      alert("Revisa el desglose de pago mixto o el tipo de cambio antes de continuar — hay algo que no cuadra.");
+      return;
+    }
+    if (!facturaDatosOk) {
+      alert("Para emitir factura, ingresa un RUC de 11 dígitos y la razón social.");
+      return;
+    }
+    // Sin comprobante que emitir (sin permiso para facturar, o el adelanto
+    // ya cubrió todo) — cerrar la cuenta directo, sin mostrar una vista
+    // previa vacía de un comprobante que no se va a emitir.
+    if (!hayComprobantePorEmitir) {
+      confirmarCheckout();
+      return;
+    }
+    setVistaPreviaComprobante(true);
+  }
 
+  async function confirmarCheckout() {
+    const pagos = construirPagos();
     setEnviando(true);
     setErrorEnvio(null);
     try {
@@ -177,12 +1190,20 @@ function CheckoutPantalla() {
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
-      setResultadoOk({ nombre: reservaSel.nombre_completo, codigo: reservaSel.codigo, pagos });
+      setResultadoOk({ nombre: reservaSel.nombre_completo, codigo: reservaSel.codigo, pagos, comprobantes: data.comprobantes || [] });
     } catch (err) {
       setErrorEnvio(err.message);
     } finally {
       setEnviando(false);
     }
+  }
+
+  function descripcionItemPreview(concepto) {
+    const c = folio?.cliente || {};
+    if (concepto === "hospedaje") {
+      return `Servicio de alojamiento — domo ${c.domoCodigo || "?"} (${c.fechaLlegada || "?"} a ${c.fechaSalida || "?"})`;
+    }
+    return "Consumo en restaurante";
   }
 
   if (resultadoOk) {
@@ -194,9 +1215,43 @@ function CheckoutPantalla() {
           <div style={{ color: T.ivoryMuted, fontSize: 14, marginBottom: 20 }}>{resultadoOk.codigo} — {resultadoOk.nombre}</div>
           <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 18, textAlign: "left", marginBottom: 24 }}>
             {resultadoOk.pagos.map((p, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "6px 0", borderBottom: i < resultadoOk.pagos.length - 1 ? `1px solid ${T.cardBorder}` : "none" }}>
-                <span style={{ textTransform: "capitalize" }}>{p.concepto} · {METODOS.find(m => m.valor === p.metodoPago)?.label}</span>
-                <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+              <div key={i} style={{ padding: "6px 0", borderBottom: i < resultadoOk.pagos.length - 1 ? `1px solid ${T.cardBorder}` : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                  <span style={{ textTransform: "capitalize" }}>{p.concepto} · {METODOS.find(m => m.valor === p.metodoPago)?.label}</span>
+                  <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+                </div>
+                {p.detalleMixto && (
+                  <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 4 }}>
+                    {p.detalleMixto.map((d, j) => (
+                      <div key={j}>· {METODOS_MIXTO.find(m => m.valor === d.metodo)?.label}: {p.moneda === "USD" ? "US$" : "S/."} {fmt(d.monto)}</div>
+                    ))}
+                  </div>
+                )}
+                {p.tipoComprobante && (() => {
+                  const c = (resultadoOk.comprobantes || []).find(x => x.concepto === p.concepto);
+                  if (!c) return null;
+                  if (c.ok) {
+                    return (
+                      <div style={{ marginTop: 6, textTransform: "none" }}>
+                        <div style={{ fontSize: 11.5, color: T.ivoryMuted }}>
+                          🧾 {c.tipoComprobante === "factura" ? "Factura" : "Boleta"} {c.numeroComprobante || ""}
+                          {c.sunatStatus ? ` · SUNAT: ${c.sunatStatus}` : ""}
+                        </div>
+                        {c.pdfUrl && (
+                          <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="no-imprimir"
+                            style={{ display: "inline-block", marginTop: 6, fontSize: 12, fontWeight: 600, color: T.gold, textDecoration: "none", border: `1px solid ${T.gold}`, borderRadius: 6, padding: "5px 10px" }}>
+                            🖨️ Guardar / imprimir comprobante
+                          </a>
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: "#D98A7D", textTransform: "none" }}>
+                      ⚠️ No se pudo emitir el comprobante automáticamente ({c.error || "error desconocido"}). El pago quedó registrado igual — reintenta desde "Corregir un pago anterior".
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -212,6 +1267,20 @@ function CheckoutPantalla() {
 
         <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
         <div style={{ fontSize: 18, fontWeight: 600, margin: "10px 0 20px" }}>Check-out / Cierre de cuenta</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setModo("checkout")} style={tabEstilo(modo === "checkout")}>Cerrar cuenta</button>
+          <button onClick={() => setModo("corregir")} style={tabEstilo(modo === "corregir")}>Corregir un pago anterior</button>
+        </div>
+
+        {modo === "corregir" ? (
+          <CorregirPago
+            corregirIdInicial={corregirIdParam}
+            corregirNombreInicial={corregirNombreParam}
+            corregirCodigoInicial={corregirCodigoParam}
+          />
+        ) : (
+        <React.Fragment>
 
         {idBloqueado ? (
           <div style={{ marginBottom: 20 }}>
@@ -262,11 +1331,34 @@ function CheckoutPantalla() {
           </div>
         )}
 
-        {reservaSel && folio && !cargandoFolio && (
+        {reservaSel && folio && !cargandoFolio && !preCuentaVista && (
+          <PreCuenta folio={folio} reservaSel={reservaSel} onContinuar={() => setPreCuentaVista(true)} onFolioActualizado={cargarFolio} />
+        )}
+
+        {reservaSel && folio && !cargandoFolio && preCuentaVista && (
+          <React.Fragment>
+          {vistaPreviaComprobante ? (
+            <VistaPreviaComprobante
+              folio={folio}
+              tipoComprobante={tipoComprobante}
+              facturaRuc={facturaRuc}
+              facturaRazonSocial={facturaRazonSocial}
+              pagos={construirPagos()}
+              descripcionItemPreview={descripcionItemPreview}
+              enviando={enviando}
+              errorEnvio={errorEnvio}
+              onVolver={() => setVistaPreviaComprobante(false)}
+              onConfirmar={confirmarCheckout}
+            />
+          ) : (
           <React.Fragment>
 
+            <button onClick={() => setPreCuentaVista(false)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12, padding: 0 }}>
+              ← Volver a la pre-cuenta
+            </button>
+
             <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 18 }}>
-              Tipo de cambio de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambio)}</strong> por US$ 1
+              Tipo de cambio referencial de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambioRef)}</strong> por US$ 1
             </div>
 
             {/* HOSPEDAJE */}
@@ -285,11 +1377,30 @@ function CheckoutPantalla() {
                 <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
                 <BotonMoneda moneda={monedaHospedaje} onChange={setMonedaHospedaje} />
               </div>
+
+              {usaTipoCambioHospedaje && hayHospedajeQueCobrar && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (venta) — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
+                    onChange={(e) => setTipoCambioHospedaje(e.target.value)}
+                    style={{
+                      width: 90, background: T.bg, border: `1px solid ${tipoCambioHospedajeOk ? T.cardBorder : T.red}`,
+                      borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13,
+                    }} />
+                </div>
+              )}
+
               <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
                 {monedaHospedaje === "USD" ? "US$" : "S/."} {fmt(montoCobroHospedaje)}
               </div>
               {hayHospedajeQueCobrar && (
-                <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
+                <React.Fragment>
+                  <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
+                  {metodoHospedaje === "mixto" && (
+                    <DesgloseMixto partes={mixtoHospedaje} onChange={setMixtoHospedaje}
+                      total={round2(montoCobroHospedaje)} simbolo={monedaHospedaje === "USD" ? "US$" : "S/."} />
+                  )}
+                </React.Fragment>
               )}
               {!hayHospedajeQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
@@ -317,11 +1428,30 @@ function CheckoutPantalla() {
                 <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
                 <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
               </div>
+
+              {usaTipoCambioConsumo && hayConsumoQueCobrar && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioConsumo}
+                    onChange={(e) => setTipoCambioConsumo(e.target.value)}
+                    style={{
+                      width: 90, background: T.bg, border: `1px solid ${tipoCambioConsumoOk ? T.cardBorder : T.red}`,
+                      borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13,
+                    }} />
+                </div>
+              )}
+
               <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
                 {monedaConsumo === "USD" ? "US$" : "S/."} {fmt(montoCobroConsumo)}
               </div>
               {hayConsumoQueCobrar && (
-                <SelectorMetodo valor={metodoConsumo} onChange={setMetodoConsumo} />
+                <React.Fragment>
+                  <SelectorMetodo valor={metodoConsumo} onChange={setMetodoConsumo} />
+                  {metodoConsumo === "mixto" && (
+                    <DesgloseMixto partes={mixtoConsumo} onChange={setMixtoConsumo}
+                      total={round2(montoCobroConsumo)} simbolo={monedaConsumo === "USD" ? "US$" : "S/."} />
+                  )}
+                </React.Fragment>
               )}
               {!hayConsumoQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
@@ -355,19 +1485,74 @@ function CheckoutPantalla() {
               </div>
             </div>
 
+            {!puedeEmitir && (hayHospedajeQueCobrar || hayConsumoQueCobrar) && (
+              <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 14 }}>
+                🧾 La boleta/factura de esta cuenta la emite después Dante, Yanet o Royer desde "Corregir un pago anterior" — tú solo cierras el cobro.
+              </div>
+            )}
+
+            {/* COMPROBANTE ELECTRÓNICO — se emite AUTOMÁTICAMENTE contra SUNAT
+                (vía HaylliERP) al confirmar la vista previa. No es opcional
+                para quien tiene permiso de emitir (sesion.puede_emitir_comprobantes):
+                se emite un comprobante por cada moneda distinta que se cobre.
+                Quien no tiene ese permiso nunca ve esta sección — ver
+                gruposComprobantePorMoneda más arriba. */}
+            {hayComprobantePorEmitir && (
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>🧾 Comprobante electrónico (SUNAT)</div>
+                <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 12 }}>
+                  Se emitirá automáticamente al confirmar, uno por cada moneda distinta que se esté cobrando ({Object.keys(gruposComprobantePorMoneda).map(m => gruposComprobantePorMoneda[m].join("+")).join(" · ")}).
+                </div>
+                <div style={{ display: "flex", gap: 6, marginBottom: tipoComprobante === "factura" ? 12 : 0 }}>
+                  {[{ valor: "boleta", label: "Boleta" }, { valor: "factura", label: "Factura" }].map((op) => (
+                    <button key={op.valor} onClick={() => setTipoComprobante(op.valor)} style={{
+                      flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                      border: tipoComprobante === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                      background: tipoComprobante === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+                      color: tipoComprobante === op.valor ? T.gold : T.ivoryMuted,
+                    }}>{op.label}</button>
+                  ))}
+                </div>
+                {tipoComprobante === "factura" && (
+                  <React.Fragment>
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>RUC del cliente (11 dígitos)</div>
+                      <input value={facturaRuc} maxLength={11}
+                        onChange={(e) => setFacturaRuc(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Ej: 20605979034"
+                        style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Razón social</div>
+                      <input value={facturaRazonSocial}
+                        onChange={(e) => setFacturaRazonSocial(e.target.value)}
+                        placeholder="Ej: Empresa S.A.C."
+                        style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+                    </div>
+                  </React.Fragment>
+                )}
+              </div>
+            )}
+
             {errorEnvio && (
               <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
                 Error: {errorEnvio}
               </div>
             )}
 
-            <button onClick={confirmarCheckout} disabled={enviando} style={{
-              width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10,
-              padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: "pointer",
+            <button onClick={irAVistaPrevia} disabled={!puedeEnviar} style={{
+              width: "100%", background: !puedeEnviar ? T.cardBorder : T.gold,
+              color: !puedeEnviar ? T.ivoryMuted : "#1C1A20", border: "none", borderRadius: 10,
+              padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: !puedeEnviar ? "not-allowed" : "pointer",
             }}>
-              {enviando ? "Procesando..." : "✓ Cerrar cuenta"}
+              {puedeEnviar ? (hayComprobantePorEmitir ? "Ver vista previa del comprobante →" : "✓ Cerrar cuenta") : "Revisa los montos antes de continuar"}
             </button>
           </React.Fragment>
+          )}
+          </React.Fragment>
+        )}
+
+        </React.Fragment>
         )}
 
       </div>
@@ -379,3 +1564,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<CheckoutPantalla />
 </script>
 </body>
 </html>
+
