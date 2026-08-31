@@ -1201,7 +1201,27 @@ function CheckoutPantalla() {
   function descripcionItemPreview(concepto) {
     const c = folio?.cliente || {};
     if (concepto === "hospedaje") {
-      return `Servicio de alojamiento — domo ${c.domoCodigo || "?"} (${c.fechaLlegada || "?"} a ${c.fechaSalida || "?"})`;
+      // Debe coincidir con haylliDescripcionItem() en el servidor (bug
+      // corregido 31 ago: antes se pegaban las fechas crudas y salían en
+      // inglés con zona horaria) — aquí mostramos lo mismo que se va a
+      // enviar de verdad: fechas formateadas (DD/MM/AAAA) + noches, para
+      // evitar malas interpretaciones (pedido de Dante).
+      let noches = null;
+      let desdeTexto = null;
+      let hastaTexto = null;
+      if (c.fechaLlegada && c.fechaSalida) {
+        const desde = new Date(c.fechaLlegada);
+        const hasta = new Date(c.fechaSalida);
+        if (!isNaN(desde) && !isNaN(hasta)) {
+          noches = Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
+          const opciones = { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" };
+          desdeTexto = desde.toLocaleDateString("es-PE", opciones);
+          hastaTexto = hasta.toLocaleDateString("es-PE", opciones);
+        }
+      }
+      const textoFechas = desdeTexto && hastaTexto ? ` del ${desdeTexto} al ${hastaTexto}` : "";
+      const textoNoches = noches != null && noches > 0 ? ` — ${noches} noche${noches === 1 ? "" : "s"}` : "";
+      return `Servicio de alojamiento (Domo ${c.domoCodigo || "?"})${textoFechas}${textoNoches}`;
     }
     return "Consumo en restaurante";
   }
