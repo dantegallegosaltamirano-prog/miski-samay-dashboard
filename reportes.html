@@ -73,9 +73,17 @@ function CeldaComprobantes({ comprobantes }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {comprobantes.map((c, i) => {
         if (c.estado === "emitido") {
+          // OJO (bug real, 1 sep): el link directo a c.pdfUrl es la URL
+          // interna de HaylliERP, que exige "Authorization: Bearer" — un
+          // navegador no puede mandar ese encabezado al abrir un link
+          // normal, así que daba UNAUTHORIZED (Dante no podía ver las
+          // facturas del 15 y 17 desde este reporte). Mismo fix que ya se
+          // hizo en checkout.html: pasar por nuestro backend, que sí tiene
+          // el token, en vez de linkear directo a HaylliERP.
+          const hrefPdf = c.pagoId ? `${API_BASE_URL}/api/pagos/${c.pagoId}/comprobante-pdf` : undefined;
           return (
-            <a key={i} href={c.pdfUrl || undefined} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: 11.5, color: T.green, textDecoration: c.pdfUrl ? "underline" : "none" }}>
+            <a key={i} href={hrefPdf} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 11.5, color: T.green, textDecoration: hrefPdf ? "underline" : "none" }}>
               ✅ {c.tipoComprobante} {c.numeroComprobante || ""} ({c.moneda})
             </a>
           );
@@ -132,7 +140,12 @@ function celdaComprobantesHtml(comprobantes) {
   if (!comprobantes || comprobantes.length === 0) return "sin definir";
   return comprobantes.map((c) => {
     const etiqueta = `${escaparHtml(c.tipoComprobante)} ${escaparHtml(c.numeroComprobante || "")} (${escaparHtml(c.moneda)}) — ${escaparHtml(c.estado || "sin definir")}`;
-    return c.pdfUrl ? `<a href="${escaparHtml(c.pdfUrl)}">${etiqueta}</a>` : etiqueta;
+    // Mismo fix que en CeldaComprobantes: enlazar al proxy del backend, no
+    // directo a la URL de HaylliERP (exige un token que el navegador no
+    // puede mandar). Este HTML se descarga y se puede abrir en cualquier
+    // navegador después, así que el link tiene que funcionar solo.
+    const hrefPdf = c.pagoId ? `${API_BASE_URL}/api/pagos/${c.pagoId}/comprobante-pdf` : null;
+    return hrefPdf ? `<a href="${escaparHtml(hrefPdf)}">${etiqueta}</a>` : etiqueta;
   }).join("<br/>");
 }
 
