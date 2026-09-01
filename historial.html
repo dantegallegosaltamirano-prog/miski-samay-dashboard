@@ -261,6 +261,10 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
   const [tipoComprobante, setTipoComprobante] = useState("boleta");
   const [facturaRuc, setFacturaRuc] = useState("");
   const [facturaRazonSocial, setFacturaRazonSocial] = useState("");
+  // Fecha de emisión opcional (AAAA-MM-DD) — para reservas históricas de
+  // agosto que se completan recién ahora (1 sep), así el comprobante sale
+  // con fecha de agosto en vez de la fecha de hoy. Vacío = hoy.
+  const [fechaEmision, setFechaEmision] = useState("");
 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
@@ -296,6 +300,7 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
           tipoComprobante,
           facturaRuc: tipoComprobante === "factura" ? facturaRuc.trim() : null,
           facturaRazonSocial: tipoComprobante === "factura" ? facturaRazonSocial.trim() : null,
+          fechaEmision: fechaEmision.trim() || undefined,
         }),
       });
       const data = await resp.json();
@@ -443,8 +448,12 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
             </div>
           </div>
         )}
+        <div style={{ marginTop: 10 }}>
+          <label style={labelStyle}>Fecha de emisión (opcional — solo para reservas de agosto, escribe 31/08/2026; déjalo vacío para emitir con la fecha de hoy)</label>
+          <input type="date" style={inputStyle} value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)} />
+        </div>
         <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 8 }}>
-          Se intenta emitir de inmediato contra HaylliERP. Mientras el token de sandbox no funcione, quedará guardada con error — se puede reintentar después desde "Corregir un pago anterior" en Check-out.
+          Se intenta emitir de inmediato contra HaylliERP. Si algo falla, quedará guardada con error — se puede reintentar después desde "Corregir un pago anterior" en Check-out.
         </div>
       </div>
 
