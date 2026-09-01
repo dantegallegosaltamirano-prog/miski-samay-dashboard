@@ -420,6 +420,14 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const [errorForm, setErrorForm] = useState(null);
   const [correccionOk, setCorreccionOk] = useState(null);
 
+  // "Agregar cargo faltante" — para cuando nunca se registró un pago (ej.
+  // consumos que no se cargaron), a diferencia de "corregir" que necesita
+  // un pago existente para seleccionar. Comparte los campos de arriba
+  // (monto, moneda, metodo, tipoCambio, mixto, correctorId, motivo).
+  const [agregandoNuevo, setAgregandoNuevo] = useState(false);
+  const [nuevoConcepto, setNuevoConcepto] = useState("consumo");
+  const [agregadoOk, setAgregadoOk] = useState(null);
+
   // Edición rápida del comprobante electrónico (boleta/factura) de un pago
   // ya cerrado — no requiere gerencia ni motivo, es solo anotar el número
   // que se emitió a mano en la plataforma del proveedor (Keyfacil).
@@ -581,6 +589,58 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const tipoCambioOk = !usaTipoCambio || Number(tipoCambio) > 0;
   const puedeCorregir = pagoSel && correctorId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOk;
 
+  // Mismas reglas que arriba, pero para el pago NUEVO (sin pagoSel).
+  const usaTipoCambioNuevo = agregandoNuevo && (nuevoConcepto === "hospedaje" ? moneda === "PEN" : moneda === "USD");
+  const tipoCambioOkNuevo = !usaTipoCambioNuevo || Number(tipoCambio) > 0;
+  const puedeAgregar = agregandoNuevo && correctorId && motivo.trim().length >= 5 && Number(monto) > 0 && mixtoOk && tipoCambioOkNuevo;
+
+  function abrirAgregarNuevo() {
+    setAgregandoNuevo(true);
+    setNuevoConcepto("consumo");
+    setMonto("");
+    setMoneda("PEN");
+    setMetodo("efectivo");
+    setTipoCambio("");
+    setMixto([nuevaParteMixto(), nuevaParteMixto()]);
+    setMotivo("");
+    setCorrectorId("");
+    setErrorForm(null);
+    setAgregadoOk(null);
+  }
+
+  async function agregarCargoFaltante() {
+    if (!puedeAgregar) {
+      setErrorForm("Completa todos los campos: quién agrega, motivo, monto válido y desglose correcto.");
+      return;
+    }
+    setEnviando(true);
+    setErrorForm(null);
+    const nuevoPago = {
+      concepto: nuevoConcepto,
+      monto: round2(Number(monto)),
+      moneda,
+      metodoPago: metodo,
+    };
+    if (usaTipoCambioNuevo) nuevoPago.tipoCambio = Number(tipoCambio);
+    if (metodo === "mixto") nuevoPago.detalleMixto = mixto.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/pago-adicional`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: motivo.trim(), staffId: correctorId, nuevoPago }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo agregar el cargo");
+      setAgregadoOk({ montoTotal: data.montoTotal });
+      await seleccionarReserva(reservaSel);
+    } catch (e) {
+      setErrorForm(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   async function corregirPago() {
     if (!puedeCorregir) {
       setErrorForm("Completa todos los campos: quién corrige, motivo, monto válido y desglose correcto.");
@@ -626,6 +686,98 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
         <button onClick={() => { setReservaSel(null); setPagoSel(null); setCorreccionOk(null); setQuery(""); setResultados([]); setBusquedaHecha(false); }}
           style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10, padding: "12px 0", width: "100%", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
           Buscar otra reserva
+        </button>
+      </div>
+    );
+  }
+
+  if (agregandoNuevo && agregadoOk) {
+    return (
+      <div>
+        <div style={{ background: "rgba(107,143,113,0.12)", border: `1px solid ${T.green}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, color: T.green, marginBottom: 6 }}>✓ Cargo agregado</div>
+          <div style={{ fontSize: 13, color: T.ivoryMuted }}>
+            Se agregó el cargo de {nuevoConcepto}
+            {agregadoOk.montoTotal != null ? ` por ${moneda === "USD" ? "US$" : "S/."} ${fmt(agregadoOk.montoTotal)}` : ""} a esta reserva.
+            Ahora puedes emitir su comprobante desde la lista de pagos, con el botón "+ Agregar comprobante".
+          </div>
+        </div>
+        <button onClick={() => { setAgregandoNuevo(false); setAgregadoOk(null); }}
+          style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10, padding: "12px 0", width: "100%", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+          Volver a los pagos de esta reserva
+        </button>
+      </div>
+    );
+  }
+
+  if (agregandoNuevo) {
+    return (
+      <div>
+        <button onClick={() => setAgregandoNuevo(false)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12 }}>← Volver a los pagos</button>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Qué tipo de cargo es?</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {[{ valor: "consumo", label: "Consumo" }, { valor: "hospedaje", label: "Hospedaje" }].map((op) => (
+            <button key={op.valor} onClick={() => { setNuevoConcepto(op.valor); setMoneda(op.valor === "hospedaje" ? "USD" : "PEN"); }} style={{
+              flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+              border: nuevoConcepto === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+              background: nuevoConcepto === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+              color: nuevoConcepto === op.valor ? T.gold : T.ivoryMuted,
+            }}>{op.label}</button>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién agrega este cargo? (solo gerencia)</div>
+        <select value={correctorId} onChange={(e) => setCorrectorId(e.target.value)} style={selectStyle}>
+          <option value="">Selecciona...</option>
+          {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Motivo (por qué nunca se cargó antes)</div>
+        <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2}
+          placeholder="Ej: se cerró la cuenta sin cargar los consumos del huésped"
+          style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, margin: "14px 0 6px" }}>Monto</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 14, color: T.ivoryMuted }}>{moneda === "USD" ? "US$" : "S/."}</span>
+          <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}
+            style={{ flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", color: T.ivory, fontSize: 14 }} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted }}>Moneda:</div>
+          <BotonMoneda moneda={moneda} onChange={setMoneda} />
+        </div>
+
+        {usaTipoCambioNuevo && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>
+              Tipo de cambio ({nuevoConcepto === "hospedaje" ? "venta" : "compra"}) — S/ por US$1:
+            </span>
+            <input type="number" min="0" step="0.001" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioOkNuevo ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>Método de pago:</div>
+        <SelectorMetodo valor={metodo} onChange={setMetodo} />
+        {metodo === "mixto" && (
+          <DesgloseMixto partes={mixto} onChange={setMixto} total={round2(Number(monto) || 0)} simbolo={moneda === "USD" ? "US$" : "S/."} />
+        )}
+
+        {errorForm && (
+          <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, margin: "14px 0" }}>
+            {errorForm}
+          </div>
+        )}
+
+        <button onClick={agregarCargoFaltante} disabled={enviando} style={{
+          width: "100%", background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
+          border: "none", borderRadius: 10, padding: "14px 0", fontSize: 14, fontWeight: 700,
+          cursor: enviando ? "not-allowed" : "pointer", marginTop: 16,
+        }}>
+          {enviando ? "Agregando..." : "Agregar cargo"}
         </button>
       </div>
     );
@@ -827,6 +979,12 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
             ))}
           </div>
         )}
+        <button onClick={abrirAgregarNuevo} style={{
+          width: "100%", background: "none", border: `1px dashed ${T.cardBorder}`, color: T.gold,
+          borderRadius: 10, padding: "12px 0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", marginTop: 14,
+        }}>
+          + Agregar cargo que nunca se cargó (consumo u hospedaje)
+        </button>
       </div>
     );
   }
