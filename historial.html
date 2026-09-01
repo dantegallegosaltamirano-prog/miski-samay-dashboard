@@ -268,6 +268,15 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
+  // Paso de confirmación ANTES de guardar/emitir — se agregó el 1 sep tras
+  // un caso real: el navegador autocompletó el nombre y documento de OTRO
+  // huésped real ya guardado (mismo campo de texto, sin autocomplete="off"
+  // en ese momento), y como este formulario emitía directo contra HaylliERP
+  // sin ningún paso intermedio, se generó una boleta real ante SUNAT con el
+  // nombre equivocado antes de que alguien pudiera notarlo. Ahora, igual que
+  // en Check-out, hay que revisar un resumen y confirmar antes de que se
+  // dispare cualquier llamada real a SUNAT.
+  const [mostrandoPreview, setMostrandoPreview] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/domos`).then(r => r.json()).then(d => setDomos(Array.isArray(d) ? d : [])).catch(() => {});
@@ -323,7 +332,7 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
         <div>
           <label style={labelStyle}>Nombre completo del huésped</label>
-          <input style={inputStyle} value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} placeholder="Ej. Juan Pérez" />
+          <input autoComplete="off" style={inputStyle} value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} placeholder="Ej. Juan Pérez" />
         </div>
         <div>
           <label style={labelStyle}>Tipo de documento</label>
@@ -336,14 +345,14 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
         </div>
         <div>
           <label style={labelStyle}>N° de documento</label>
-          <input style={inputStyle} value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
+          <input autoComplete="off" style={inputStyle} value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
         <div>
           <label style={labelStyle}>País</label>
-          <input style={inputStyle} value={pais} onChange={(e) => setPais(e.target.value)} placeholder="Opcional" />
+          <input autoComplete="off" style={inputStyle} value={pais} onChange={(e) => setPais(e.target.value)} placeholder="Opcional" />
         </div>
         <div>
           <label style={labelStyle}>Canal</label>
@@ -457,28 +466,75 @@ function FormularioReservaHistorica({ onCreada, onCancelar }) {
         </div>
       </div>
 
+      {mostrandoPreview && (
+        <div style={{ border: `1px solid ${T.gold}`, borderRadius: 10, padding: 14, marginBottom: 16, background: "rgba(201,162,75,0.08)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: T.gold }}>
+            Revisa antes de continuar — esto va a crear la reserva y {tipoComprobante ? "emitir un comprobante real ante SUNAT" : "no emitir comprobante todavía"}:
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <div><strong>Huésped:</strong> {nombreCompleto.trim() || "(sin nombre)"}{tipoDocumento ? ` — ${tipoDocumento} ${numeroDocumento.trim() || "(sin número)"}` : ""}</div>
+            <div><strong>Domo:</strong> {domoCodigo || "sin asignar"} · <strong>Canal:</strong> {canalOrigen}</div>
+            <div><strong>Fechas:</strong> {fechaLlegada} → {fechaSalida}</div>
+            <div><strong>Hospedaje:</strong> {hospedajeMoneda === "USD" ? "US$" : "S/."} {Number(hospedajeMonto).toFixed(2)} ({hospedajeMetodo})</div>
+            {huboConsumo && (
+              <div><strong>Consumo:</strong> {consumoMoneda === "USD" ? "US$" : "S/."} {Number(consumoMonto).toFixed(2)} ({consumoMetodo})</div>
+            )}
+            <div><strong>Comprobante:</strong> {tipoComprobante === "factura" ? `Factura — RUC ${facturaRuc} — ${facturaRazonSocial}` : "Boleta"}</div>
+            <div><strong>Fecha de emisión:</strong> {fechaEmision.trim() || "hoy (fecha actual)"}</div>
+          </div>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>
+            Verifica sobre todo el nombre del huésped y el documento — revisa que no se haya autocompletado con los datos de otra persona.
+          </div>
+        </div>
+      )}
+
       {error && (
         <div style={{ fontSize: 12.5, color: T.red, marginBottom: 12 }}>⚠️ {error}</div>
       )}
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button
-          onClick={guardar}
-          disabled={!listo || enviando}
-          style={{
-            flex: 1, background: listo ? T.gold : T.cardBorder, color: listo ? "#1C1A20" : T.ivoryMuted,
-            border: "none", borderRadius: 8, padding: "12px 0", fontWeight: 700, fontSize: 13.5,
-            cursor: listo && !enviando ? "pointer" : "not-allowed",
-          }}
-        >
-          {enviando ? "Guardando..." : "Guardar reserva histórica"}
-        </button>
-        <button
-          onClick={onCancelar}
-          style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "12px 18px", fontSize: 13 }}
-        >
-          Cancelar
-        </button>
+        {!mostrandoPreview ? (
+          <React.Fragment>
+            <button
+              onClick={() => listo && setMostrandoPreview(true)}
+              disabled={!listo}
+              style={{
+                flex: 1, background: listo ? T.gold : T.cardBorder, color: listo ? "#1C1A20" : T.ivoryMuted,
+                border: "none", borderRadius: 8, padding: "12px 0", fontWeight: 700, fontSize: 13.5,
+                cursor: listo ? "pointer" : "not-allowed",
+              }}
+            >
+              Continuar →
+            </button>
+            <button
+              onClick={onCancelar}
+              style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "12px 18px", fontSize: 13 }}
+            >
+              Cancelar
+            </button>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <button
+              onClick={() => setMostrandoPreview(false)}
+              disabled={enviando}
+              style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "12px 18px", fontSize: 13, cursor: enviando ? "not-allowed" : "pointer" }}
+            >
+              ← Volver a editar
+            </button>
+            <button
+              onClick={guardar}
+              disabled={enviando}
+              style={{
+                flex: 1, background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
+                border: "none", borderRadius: 8, padding: "12px 0", fontWeight: 700, fontSize: 13.5,
+                cursor: enviando ? "not-allowed" : "pointer",
+              }}
+            >
+              {enviando ? "Guardando..." : "✓ Confirmar, guardar y emitir"}
+            </button>
+          </React.Fragment>
+        )}
       </div>
     </div>
   );
