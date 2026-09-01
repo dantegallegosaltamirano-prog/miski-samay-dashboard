@@ -404,6 +404,11 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const [reservaSel, setReservaSel] = useState(null);
   const [pagos, setPagos] = useState([]);
   const [cargandoPagos, setCargandoPagos] = useState(false);
+  // Datos del huésped/estadía (fechas, domo) para armar la MISMA descripción
+  // que va a salir en el comprobante — pedido de Dante (1 sep): que el
+  // formulario de "Agregar cargo faltante" muestre esa descripción antes de
+  // guardar, igual que ya se muestra en la vista previa del check-out normal.
+  const [reservaCliente, setReservaCliente] = useState(null);
 
   const [pagoSel, setPagoSel] = useState(null);
 
@@ -562,6 +567,42 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
     } finally {
       setCargandoPagos(false);
     }
+    // Fechas/domo para la vista previa de la descripción — si falla, no
+    // bloquea nada, solo no se muestra el preview (queda igual que antes).
+    try {
+      const respFolio = await fetch(`${API_BASE_URL}/api/reservas/${r.reserva_id}/folio`);
+      const dataFolio = await respFolio.json();
+      setReservaCliente(dataFolio?.cliente || null);
+    } catch (e) {
+      setReservaCliente(null);
+    }
+  }
+
+  // Debe coincidir con haylliDescripcionItem() en el servidor (misma lógica
+  // que descripcionItemPreview() de CheckoutPantalla, pero usando
+  // reservaCliente en vez de folio.cliente porque aquí no cargamos el folio
+  // completo, solo lo necesario para armar el texto).
+  function descripcionItemPreviewCorregir(concepto) {
+    const c = reservaCliente || {};
+    if (concepto === "hospedaje") {
+      let noches = null;
+      let desdeTexto = null;
+      let hastaTexto = null;
+      if (c.fechaLlegada && c.fechaSalida) {
+        const desde = new Date(c.fechaLlegada);
+        const hasta = new Date(c.fechaSalida);
+        if (!isNaN(desde) && !isNaN(hasta)) {
+          noches = Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
+          const opciones = { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" };
+          desdeTexto = desde.toLocaleDateString("es-PE", opciones);
+          hastaTexto = hasta.toLocaleDateString("es-PE", opciones);
+        }
+      }
+      const textoFechas = desdeTexto && hastaTexto ? ` del ${desdeTexto} al ${hastaTexto}` : "";
+      const textoNoches = noches != null && noches > 0 ? ` — ${noches} noche${noches === 1 ? "" : "s"}` : "";
+      return `Servicio de alojamiento (Domo ${c.domoCodigo || "?"})${textoFechas}${textoNoches}`;
+    }
+    return "Consumo en restaurante";
   }
 
   function seleccionarPago(p) {
@@ -727,6 +768,11 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
           ))}
         </div>
 
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
+          <div style={{ fontSize: 10.5, color: T.ivoryMuted, textTransform: "uppercase", marginBottom: 3 }}>Así va a salir en el comprobante</div>
+          <div style={{ fontSize: 13, color: T.ivory }}>{descripcionItemPreviewCorregir(nuevoConcepto)}</div>
+        </div>
+
         <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién agrega este cargo? (solo gerencia)</div>
         <select value={correctorId} onChange={(e) => setCorrectorId(e.target.value)} style={selectStyle}>
           <option value="">Selecciona...</option>
@@ -793,6 +839,11 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
           <div style={{ fontSize: 14, fontWeight: 700, textTransform: "capitalize" }}>
             {pagoSel.concepto} — {pagoSel.moneda === "USD" ? "US$" : "S/."} {fmt(pagoSel.monto)} ({METODOS.find(m => m.valor === pagoSel.metodo_pago)?.label})
           </div>
+        </div>
+
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: "10px 12px", marginBottom: 16 }}>
+          <div style={{ fontSize: 10.5, color: T.ivoryMuted, textTransform: "uppercase", marginBottom: 3 }}>Así va a salir en el comprobante</div>
+          <div style={{ fontSize: 13, color: T.ivory }}>{descripcionItemPreviewCorregir(pagoSel.concepto)}</div>
         </div>
 
         <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién corrige este pago? (solo gerencia)</div>
