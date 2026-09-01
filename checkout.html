@@ -1273,7 +1273,7 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
 // muestra exactamente lo que se va a enviar (cliente, ítems, montos) para
 // que el staff confirme que está correcto antes del paso final de
 // "guardar e imprimir" (que dispara la emisión real vía HaylliERP).
-function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRazonSocial, pagos, descripcionItemPreview, enviando, errorEnvio, onVolver, onConfirmar }) {
+function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRazonSocial, fechaEmision, pagos, descripcionItemPreview, enviando, errorEnvio, onVolver, onConfirmar }) {
   const cliente = folio?.cliente || {};
   const lineasConComprobante = pagos.filter(p => p.tipoComprobante);
   const porMoneda = {};
@@ -1290,6 +1290,10 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Vista previa del comprobante</div>
       <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 16 }}>
         Revisa que los datos estén correctos — al confirmar se emite de inmediato ante SUNAT, no se puede deshacer.
+      </div>
+
+      <div style={{ fontSize: 12.5, marginBottom: 16, padding: "8px 12px", borderRadius: 8, background: fechaEmision ? "rgba(201,162,75,0.10)" : "transparent", border: fechaEmision ? `1px solid ${T.gold}` : "none" }}>
+        <strong>Fecha de emisión:</strong> {fechaEmision || "hoy (fecha actual)"}
       </div>
 
       {Object.keys(porMoneda).map((moneda) => {
@@ -1407,6 +1411,12 @@ function CheckoutPantalla() {
   const [tipoComprobante, setTipoComprobante] = useState("boleta");
   const [facturaRuc, setFacturaRuc] = useState("");
   const [facturaRazonSocial, setFacturaRazonSocial] = useState("");
+  // Fecha de emisión opcional (AAAA-MM-DD): para completar recién ahora (1 sep
+  // en adelante) el check-out de estadías de AGOSTO que quedaron pendientes
+  // (llegaron por Aloha pero nunca se les hizo check-in/check-out a tiempo).
+  // Vacío = se emite con la fecha de hoy. HaylliERP pidió explícitamente no
+  // mezclar emisiones de agosto con las de setiembre.
+  const [fechaEmision, setFechaEmision] = useState("");
   const [vistaPreviaComprobante, setVistaPreviaComprobante] = useState(false);
 
   const [enviando, setEnviando] = useState(false);
@@ -1592,7 +1602,7 @@ function CheckoutPantalla() {
       const resp = await fetch(`${API_BASE_URL}/api/reservas/${reservaSel.reserva_id}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pagos, staffId: null }),
+        body: JSON.stringify({ pagos, staffId: null, fechaEmision: fechaEmision.trim() || undefined }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
@@ -1769,6 +1779,7 @@ function CheckoutPantalla() {
               tipoComprobante={tipoComprobante}
               facturaRuc={facturaRuc}
               facturaRazonSocial={facturaRazonSocial}
+              fechaEmision={fechaEmision.trim()}
               pagos={construirPagos()}
               descripcionItemPreview={descripcionItemPreview}
               enviando={enviando}
@@ -1957,6 +1968,11 @@ function CheckoutPantalla() {
                     </div>
                   </React.Fragment>
                 )}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Fecha de emisión (opcional — solo para cerrar cuentas atrasadas de agosto con fecha 31/08/2026; déjalo vacío para emitir con la fecha de hoy)</div>
+                  <input type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)}
+                    style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+                </div>
               </div>
             )}
 
@@ -1990,4 +2006,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<CheckoutPantalla />
 </script>
 </body>
 </html>
-
