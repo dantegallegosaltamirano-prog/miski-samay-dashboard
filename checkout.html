@@ -493,6 +493,10 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const [comprobanteEditModo, setComprobanteEditModo] = useState("automatico"); // "automatico" | "manual"
   const [comprobanteEditRuc, setComprobanteEditRuc] = useState("");
   const [comprobanteEditRazonSocial, setComprobanteEditRazonSocial] = useState("");
+  // Fecha de emisión opcional (AAAA-MM-DD) — solo para reemitir con fecha
+  // pasada (hasta 1 día atrás, confirmado por HaylliERP) los comprobantes
+  // de la serie B001 reseteados el 1 sep. Vacío = hoy (caso normal).
+  const [comprobanteEditFecha, setComprobanteEditFecha] = useState("");
   const [guardandoComprobante, setGuardandoComprobante] = useState(false);
   const [errorComprobante, setErrorComprobante] = useState(null);
 
@@ -520,6 +524,7 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
     setComprobanteEditModo("automatico");
     setComprobanteEditRuc(p.factura_ruc || "");
     setComprobanteEditRazonSocial(p.factura_razon_social || "");
+    setComprobanteEditFecha("");
     setErrorComprobante(null);
   }
 
@@ -541,6 +546,7 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
           tipoComprobante: comprobanteEditTipo,
           facturaRuc: comprobanteEditTipo === "factura" ? comprobanteEditRuc.trim() : undefined,
           facturaRazonSocial: comprobanteEditTipo === "factura" ? comprobanteEditRazonSocial.trim() : undefined,
+          fechaEmision: comprobanteEditFecha.trim() || undefined,
         }),
       });
       const data = await resp.json();
@@ -1049,6 +1055,15 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
                             style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
                         </React.Fragment>
                       ) : null}
+                      {comprobanteEditModo === "automatico" && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 4 }}>
+                            Fecha de emisión (opcional — solo para reemitir agosto con fecha 31/08, déjalo vacío para emitir con la fecha de hoy)
+                          </div>
+                          <input type="date" value={comprobanteEditFecha} onChange={(e) => setComprobanteEditFecha(e.target.value)}
+                            style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+                        </div>
+                      )}
                       {errorComprobante && (
                         <div style={{ color: "#D98A7D", fontSize: 11.5, marginBottom: 8 }}>{errorComprobante}</div>
                       )}
