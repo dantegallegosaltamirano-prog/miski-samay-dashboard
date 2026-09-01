@@ -443,6 +443,47 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const [anulandoEnviando, setAnulandoEnviando] = useState(false);
   const [anulandoError, setAnulandoError] = useState(null);
 
+  // Herramienta excepcional (1 sep): HaylliERP confirmó que la serie B001
+  // completa nunca quedó registrada ante SUNAT y que TODOS los documentos
+  // emitidos ahí son inválidos — hay que "reabrir" esos pagos (sin tocar
+  // el monto/pago en sí) para poder emitirlos de nuevo bajo la serie
+  // nueva (B002/F002). Vive en la pantalla de búsqueda porque no aplica a
+  // una sola reserva, sino a todas las que compartan ese prefijo de serie.
+  const [resetSerieAbierto, setResetSerieAbierto] = useState(false);
+  const [resetSeriePrefix, setResetSeriePrefix] = useState("B001");
+  const [resetSerieMotivo, setResetSerieMotivo] = useState("");
+  const [resetSerieCorrectorId, setResetSerieCorrectorId] = useState("");
+  const [resetSerieEnviando, setResetSerieEnviando] = useState(false);
+  const [resetSerieError, setResetSerieError] = useState(null);
+  const [resetSerieOk, setResetSerieOk] = useState(null);
+
+  async function resetearSerie() {
+    if (!resetSeriePrefix.trim() || resetSerieMotivo.trim().length < 5 || !resetSerieCorrectorId) {
+      setResetSerieError("Completa el prefijo de serie, quién autoriza y el motivo.");
+      return;
+    }
+    setResetSerieEnviando(true);
+    setResetSerieError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/resetear-comprobantes-serie`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seriePrefix: resetSeriePrefix.trim(),
+          motivo: resetSerieMotivo.trim(),
+          staffId: resetSerieCorrectorId,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo resetear la serie");
+      setResetSerieOk(data);
+    } catch (e) {
+      setResetSerieError(e.message);
+    } finally {
+      setResetSerieEnviando(false);
+    }
+  }
+
   // Edición rápida del comprobante electrónico (boleta/factura) de un pago
   // ya cerrado — no requiere gerencia ni motivo, es solo anotar el número
   // que se emitió a mano en la plataforma del proveedor (Keyfacil).
@@ -1147,6 +1188,68 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
           ))}
         </div>
       )}
+
+      {/* Herramienta excepcional — resetear una serie completa de comprobantes
+          (ver comentario junto a resetearSerie más arriba). Colapsada por
+          defecto para no estorbar el uso diario normal. */}
+      <div style={{ marginTop: 28, paddingTop: 16, borderTop: `1px dashed ${T.cardBorder}` }}>
+        {!resetSerieAbierto ? (
+          <button onClick={() => { setResetSerieAbierto(true); setResetSerieOk(null); setResetSerieError(null); }} style={{
+            background: "none", border: "none", color: T.ivoryMuted, fontSize: 11, cursor: "pointer", padding: 0,
+          }}>
+            ⚙️ Herramienta excepcional: resetear una serie completa de comprobantes
+          </button>
+        ) : resetSerieOk ? (
+          <div>
+            <div style={{ background: "rgba(107,143,113,0.12)", border: `1px solid ${T.green}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, color: T.green, marginBottom: 4, fontSize: 13 }}>✓ Serie reseteada</div>
+              <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>
+                Se limpiaron {resetSerieOk.pagosAfectados} pago(s) con serie "{resetSeriePrefix}". Esos pagos ya no
+                tienen comprobante — vuelven a aparecer como pendientes de facturar y pueden emitirse de nuevo desde
+                "Corregir un pago anterior" (o desde el reporte mensual), con la serie nueva configurada.
+              </div>
+            </div>
+            <button onClick={() => { setResetSerieAbierto(false); setResetSerieOk(null); setResetSeriePrefix("B001"); setResetSerieMotivo(""); setResetSerieCorrectorId(""); }} style={{
+              background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer",
+            }}>Cerrar</button>
+          </div>
+        ) : (
+          <div style={{ background: T.card, border: `1px solid ${T.red}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12.5, color: "#D98A7D", marginBottom: 10 }}>
+              ⚠️ Esto borra el número/estado de comprobante de TODOS los pagos activos cuya serie empiece con el
+              prefijo indicado (ej. "B001") — no toca el pago ni el monto cobrado al huésped, solo permite volver a
+              emitir el comprobante desde cero. Úsalo solo si HaylliERP confirmó que esos documentos no tienen
+              validez ante SUNAT.
+            </div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Prefijo de serie a resetear</div>
+            <input value={resetSeriePrefix} onChange={(e) => setResetSeriePrefix(e.target.value)}
+              placeholder="Ej: B001"
+              style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 10 }} />
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>¿Quién autoriza? (solo gerencia)</div>
+            <select value={resetSerieCorrectorId} onChange={(e) => setResetSerieCorrectorId(e.target.value)} style={{ ...selectStyle, marginBottom: 10 }}>
+              <option value="">Selecciona...</option>
+              {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Motivo</div>
+            <textarea value={resetSerieMotivo} onChange={(e) => setResetSerieMotivo(e.target.value)} rows={2}
+              placeholder="Ej: HaylliERP confirmó que la serie B001 nunca se registró ante SUNAT"
+              style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit", marginBottom: 10 }} />
+            {resetSerieError && (
+              <div style={{ color: "#D98A7D", fontSize: 11.5, marginBottom: 10 }}>{resetSerieError}</div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setResetSerieAbierto(false)} style={{
+                flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer",
+              }}>Cancelar</button>
+              <button onClick={resetearSerie} disabled={resetSerieEnviando} style={{
+                flex: 1, background: resetSerieEnviando ? T.cardBorder : "#A83E32", color: resetSerieEnviando ? T.ivoryMuted : "#fff",
+                border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: resetSerieEnviando ? "not-allowed" : "pointer",
+              }}>{resetSerieEnviando ? "Reseteando..." : "Resetear serie"}</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
