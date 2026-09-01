@@ -433,6 +433,16 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
   const [nuevoConcepto, setNuevoConcepto] = useState("consumo");
   const [agregadoOk, setAgregadoOk] = useState(null);
 
+  // "Anular este cargo" — para limpiar un pago agregado de más o por error
+  // (ej. un doble clic que dejó dos líneas de consumo iguales), sin crear
+  // ningún reemplazo. Solo aplica a pagos que todavía NO tienen comprobante
+  // emitido (el backend también lo exige).
+  const [anulandoId, setAnulandoId] = useState(null);
+  const [anulandoCorrectorId, setAnulandoCorrectorId] = useState("");
+  const [anulandoMotivo, setAnulandoMotivo] = useState("");
+  const [anulandoEnviando, setAnulandoEnviando] = useState(false);
+  const [anulandoError, setAnulandoError] = useState(null);
+
   // Edición rápida del comprobante electrónico (boleta/factura) de un pago
   // ya cerrado — no requiere gerencia ni motivo, es solo anotar el número
   // que se emitió a mano en la plataforma del proveedor (Keyfacil).
@@ -679,6 +689,37 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
       setErrorForm(e.message);
     } finally {
       setEnviando(false);
+    }
+  }
+
+  function abrirAnular(p) {
+    setAnulandoId(p.id);
+    setAnulandoCorrectorId("");
+    setAnulandoMotivo("");
+    setAnulandoError(null);
+  }
+
+  async function confirmarAnular() {
+    if (!anulandoCorrectorId || anulandoMotivo.trim().length < 5) {
+      setAnulandoError("Completa quién anula y el motivo (mínimo unas palabras).");
+      return;
+    }
+    setAnulandoEnviando(true);
+    setAnulandoError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${anulandoId}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: anulandoMotivo.trim(), staffId: anulandoCorrectorId }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo anular el pago");
+      setAnulandoId(null);
+      if (reservaSel) await seleccionarReserva(reservaSel);
+    } catch (e) {
+      setAnulandoError(e.message);
+    } finally {
+      setAnulandoEnviando(false);
     }
   }
 
@@ -1026,6 +1067,44 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
                     </div>
                   )}
                 </div>
+
+                {/* Anular sin reemplazo — para limpiar un cargo que se agregó
+                    de más o por error (ej. doble clic). Solo si todavía no
+                    tiene comprobante emitido; si ya se emitió, el backend
+                    rechaza igual, pero ni se muestra la opción acá. */}
+                {p.comprobante_estado !== "emitido" && (
+                  <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 10, paddingTop: 10 }}>
+                    {anulandoId === p.id ? (
+                      <div>
+                        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Quién anula este cargo? (solo gerencia)</div>
+                        <select value={anulandoCorrectorId} onChange={(e) => setAnulandoCorrectorId(e.target.value)} style={{ ...selectStyle, marginBottom: 8 }}>
+                          <option value="">Selecciona...</option>
+                          {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                        </select>
+                        <textarea value={anulandoMotivo} onChange={(e) => setAnulandoMotivo(e.target.value)} rows={2}
+                          placeholder="Ej: se agregó dos veces por error"
+                          style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit", marginBottom: 8 }} />
+                        {anulandoError && (
+                          <div style={{ color: "#D98A7D", fontSize: 11.5, marginBottom: 8 }}>{anulandoError}</div>
+                        )}
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setAnulandoId(null)} style={{
+                            flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                            borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer",
+                          }}>Cancelar</button>
+                          <button onClick={confirmarAnular} disabled={anulandoEnviando} style={{
+                            flex: 1, background: anulandoEnviando ? T.cardBorder : "#A83E32", color: anulandoEnviando ? T.ivoryMuted : "#fff",
+                            border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: anulandoEnviando ? "not-allowed" : "pointer",
+                          }}>{anulandoEnviando ? "Anulando..." : "Confirmar anulación"}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => abrirAnular(p)} style={{
+                        background: "none", border: "none", color: "#D98A7D", fontSize: 11.5, cursor: "pointer", padding: 0, fontWeight: 600,
+                      }}>🗑️ Anular este cargo (se agregó de más o por error)</button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
