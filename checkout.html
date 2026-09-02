@@ -1311,7 +1311,7 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
         return (
           <div key={moneda} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{esFactura ? "FACTURA" : "BOLETA"} · Serie {esFactura ? "F001" : "B001"}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{esFactura ? "FACTURA" : "BOLETA"} · Serie {esFactura ? "F002" : "B002"}</div>
               <div style={{ fontSize: 11, color: T.ivoryMuted }}>{moneda}</div>
             </div>
             <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>Emisor</div>
@@ -1352,7 +1352,7 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
 
       {Object.keys(porMoneda).length > 1 && (
         <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 14 }}>
-          ℹ️ Son 2 comprobantes independientes (uno por moneda) — ambos usan la misma serie ({tipoComprobante === "factura" ? "F001" : "B001"}) porque la serie identifica el TIPO de comprobante, no la moneda; HaylliERP les asigna números correlativos distintos automáticamente (ej. -00000501 y -00000502).
+          ℹ️ Son 2 comprobantes independientes (uno por moneda) — ambos usan la misma serie ({tipoComprobante === "factura" ? "F002" : "B002"}) porque la serie identifica el TIPO de comprobante, no la moneda; HaylliERP les asigna números correlativos distintos automáticamente (ej. -00000501 y -00000502).
         </div>
       )}
 
