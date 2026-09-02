@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Control de reservas</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+  bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+  gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+  green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+
+const CANALES = ["Directo", "Booking.com", "Expedia", "Airbnb"];
+const METODOS = [
+  { valor: "efectivo", label: "Efectivo" },
+  { valor: "pos", label: "Tarjeta / POS" },
+  { valor: "transferencia", label: "Transferencia" },
+  { valor: "yape", label: "Yape" },
+];
+
+function fmt(n) {
+  return (Number(n) || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fechaCorta(f) {
+  if (!f) return "—";
+  // La API a veces manda solo "2026-07-31" y a veces el timestamp ISO
+  // completo "2026-07-31T00:00:00.000Z" — nos quedamos solo con la fecha
+  // (los primeros 10 caracteres) antes de armar el Date, si no quedaba
+  // "...T00:00:00.000ZT00:00:00" y salía "Invalid Date".
+  const soloFecha = String(f).slice(0, 10);
+  const d = new Date(soloFecha + "T00:00:00");
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+}
+
+const inputStyle = {
+  width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+  color: T.ivory, padding: "9px 10px", fontSize: 13.5,
+};
+const labelStyle = { fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4, display: "block" };
+const cardStyle = { background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 18 };
+const sectionTitleStyle = { fontSize: 15, fontWeight: 700, marginBottom: 4 };
+const sectionSubStyle = { fontSize: 12, color: T.ivoryMuted, marginBottom: 14 };
+
+function Contador({ n, label, color }) {
+  return (
+    <div style={{ ...cardStyle, padding: 14, textAlign: "center", flex: 1, minWidth: 120 }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color: color || T.ivory }}>{n}</div>
+      <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function FilaReserva({ r, children }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+      padding: "10px 0", borderBottom: `1px solid ${T.cardBorder}`,
+    }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.nombre_completo || "Por confirmar"}</div>
+        <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 2 }}>
+          {r.domo_codigo || "Sin domo"} · {r.canal_origen || "—"} · {fechaCorta(r.fecha_llegada)} → {fechaCorta(r.fecha_salida)}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SeccionPendientesCheckout({ lista }) {
+  return (
+    <div style={cardStyle}>
+      <div style={sectionTitleStyle}>🕓 Con check-in, sin check-out todavía ({lista.length})</div>
+      <div style={sectionSubStyle}>
+        Ya hicieron check-in, pero falta revisar sus consumos y cerrar la cuenta para poder facturar.
+      </div>
+      {lista.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna pendiente. 🎉</div>
+      ) : (
+        <div>
+          {lista.map((r) => (
+            <FilaReserva key={r.reserva_id} r={r}>
+              <a
+                href={`checkout.html?id=${r.reserva_id}`}
+                style={{
+                  background: T.gold, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
+                  textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                }}
+              >
+                Completar cierre →
+              </a>
+            </FilaReserva>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeccionSinCheckin({ lista }) {
+  return (
+    <div style={{ ...cardStyle, border: `1px solid ${T.amber}` }}>
+      <div style={{ ...sectionTitleStyle, color: T.amber }}>
+        🛎️ Ya llegaron según Aloha, sin check-in todavía ({lista.length})
+      </div>
+      <div style={sectionSubStyle}>
+        La sincronización automática ya las creó en la plataforma (con nombre "Por confirmar" hasta que se haga el check-in), pero todavía nadie llenó los datos reales del huésped. Conviene ir de la más antigua a la más nueva: completa el check-in con los datos reales, luego carga sus consumos (Restaurante/Bar), y recién ahí aparecerá en "Con check-in, sin check-out" para cerrar la cuenta y facturar.
+      </div>
+      {lista.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna pendiente. 🎉</div>
+      ) : (
+        <div>
+          {lista.map((r) => (
+            <FilaReserva key={r.reserva_id} r={r}>
+              <a
+                href={`checkin.html?id=${r.reserva_id}`}
+                style={{
+                  background: T.amber, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
+                  textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                }}
+              >
+                Completar check-in →
+              </a>
+            </FilaReserva>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeccionLlegadasFuturas({ lista }) {
+  return (
+    <div style={cardStyle}>
+      <div style={sectionTitleStyle}>📅 Llegan en los próximos 30 días ({lista.length})</div>
+      <div style={sectionSubStyle}>
+        Ya están en Aloha, el huésped todavía no llega — no requieren ninguna acción ahora, se completan solas con el flujo normal (check-in → check-out → factura).
+      </div>
+      {lista.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay llegadas registradas en ese rango todavía.</div>
+      ) : (
+        <div>
+          {lista.map((r) => (
+            <FilaReserva key={r.reserva_id} r={r} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeccionSinComprobante({ lista }) {
+  return (
+    <div style={{ ...cardStyle, border: lista.length > 0 ? `1px solid ${T.amber}` : undefined }}>
+      <div style={{ ...sectionTitleStyle, color: lista.length > 0 ? T.amber : T.ivory }}>
+        ⚠️ Cuenta cerrada, lista para facturar ({lista.length})
+      </div>
+      <div style={sectionSubStyle}>
+        Ya se cerró la cuenta, pero todavía no tienen boleta/factura emitida (por el token de HaylliERP, porque se cerraron antes de tener la emisión automática, o porque quien cerró la cuenta no tiene permiso para emitir). Dale clic a "Generar comprobante" y te lleva directo a esa reserva en "Corregir un pago anterior", sin tener que buscarla a mano.
+      </div>
+      {lista.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna en este estado. 🎉</div>
+      ) : (
+        <div>
+          {lista.map((r) => (
+            <FilaReserva key={r.reserva_id} r={r}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {r.booking_id_externo && r.booking_id_externo.startsWith("HIST-") && (
+                  <span style={{ fontSize: 10.5, color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 6, padding: "3px 7px" }}>
+                    agregada a mano
+                  </span>
+                )}
+                <a
+                  href={`checkout.html?corregirId=${r.reserva_id}&corregirNombre=${encodeURIComponent(r.nombre_completo || "")}&corregirCodigo=${encodeURIComponent(r.domo_codigo || "")}`}
+                  style={{
+                    background: T.amber, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
+                    textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                  }}
+                >
+                  Generar comprobante →
+                </a>
+              </div>
+            </FilaReserva>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeccionFacturadas({ lista }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div style={cardStyle}>
+      <div
+        style={{ ...sectionTitleStyle, color: T.green, cursor: "pointer", display: "flex", justifyContent: "space-between" }}
+        onClick={() => setAbierto(!abierto)}
+      >
+        <span>✅ Cerradas y ya facturadas (últimos 90 días) ({lista.length})</span>
+        <span style={{ fontSize: 12, color: T.ivoryMuted }}>{abierto ? "ocultar ▲" : "ver ▼"}</span>
+      </div>
+      {abierto && (
+        lista.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginTop: 8 }}>Ninguna todavía.</div>
+        ) : (
+          <div style={{ marginTop: 8 }}>
+            {lista.map((r) => (
+              <FilaReserva key={r.reserva_id} r={r}>
+                {r.booking_id_externo && r.booking_id_externo.startsWith("HIST-") && (
+                  <span style={{ fontSize: 10.5, color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 6, padding: "3px 7px" }}>
+                    agregada a mano
+                  </span>
+                )}
+              </FilaReserva>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function FormularioReservaHistorica({ onCreada, onCancelar }) {
+  const [domos, setDomos] = useState([]);
+  const [nombreCompleto, setNombreCompleto] = useState("");
+  const [tipoDocumento, setTipoDocumento] = useState("");
+  const [numeroDocumento, setNumeroDocumento] = useState("");
+  const [pais, setPais] = useState("");
+  const [canalOrigen, setCanalOrigen] = useState("Directo");
+  const [domoCodigo, setDomoCodigo] = useState("");
+  const [bookingIdExterno, setBookingIdExterno] = useState("");
+  const [fechaLlegada, setFechaLlegada] = useState("");
+  const [fechaSalida, setFechaSalida] = useState("");
+
+  const [hospedajeMonto, setHospedajeMonto] = useState("");
+  const [hospedajeMoneda, setHospedajeMoneda] = useState("USD");
+  const [hospedajeMetodo, setHospedajeMetodo] = useState("efectivo");
+
+  const [huboConsumo, setHuboConsumo] = useState(false);
+  const [consumoMonto, setConsumoMonto] = useState("");
+  const [consumoMoneda, setConsumoMoneda] = useState("PEN");
+  const [consumoMetodo, setConsumoMetodo] = useState("efectivo");
+
+  const [tipoComprobante, setTipoComprobante] = useState("boleta");
+  const [facturaRuc, setFacturaRuc] = useState("");
+  const [facturaRazonSocial, setFacturaRazonSocial] = useState("");
+  // Fecha de emisión opcional (AAAA-MM-DD) — para reservas históricas de
+  // agosto que se completan recién ahora (1 sep), así el comprobante sale
+  // con fecha de agosto en vez de la fecha de hoy. Vacío = hoy.
+  const [fechaEmision, setFechaEmision] = useState("");
+
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  // Paso de confirmación ANTES de guardar/emitir — se agregó el 1 sep tras
+  // un caso real: el navegador autocompletó el nombre y documento de OTRO
+  // huésped real ya guardado (mismo campo de texto, sin autocomplete="off"
+  // en ese momento), y como este formulario emitía directo contra HaylliERP
+  // sin ningún paso intermedio, se generó una boleta real ante SUNAT con el
+  // nombre equivocado antes de que alguien pudiera notarlo. Ahora, igual que
+  // en Check-out, hay que revisar un resumen y confirmar antes de que se
+  // dispare cualquier llamada real a SUNAT.
+  const [mostrandoPreview, setMostrandoPreview] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/domos`).then(r => r.json()).then(d => setDomos(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+
+  const facturaOk = tipoComprobante !== "factura" || (facturaRuc.trim().length === 11 && facturaRazonSocial.trim().length > 0);
+  const listo = nombreCompleto.trim() && canalOrigen && fechaLlegada && fechaSalida
+    && Number(hospedajeMonto) > 0 && (!huboConsumo || Number(consumoMonto) > 0) && facturaOk;
+
+  async function guardar() {
+    if (!listo || enviando) return;
+    setEnviando(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/historica`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombreCompleto: nombreCompleto.trim(),
+          tipoDocumento: tipoDocumento || null,
+          numeroDocumento: numeroDocumento.trim() || null,
+          pais: pais.trim() || null,
+          canalOrigen,
+          domoCodigo: domoCodigo || null,
+          bookingIdExterno: bookingIdExterno.trim() || null,
+          fechaLlegada,
+          fechaSalida,
+          hospedaje: { monto: Number(hospedajeMonto), moneda: hospedajeMoneda, metodoPago: hospedajeMetodo },
+          consumo: huboConsumo ? { monto: Number(consumoMonto), moneda: consumoMoneda, metodoPago: consumoMetodo } : null,
+          tipoComprobante,
+          facturaRuc: tipoComprobante === "factura" ? facturaRuc.trim() : null,
+          facturaRazonSocial: tipoComprobante === "factura" ? facturaRazonSocial.trim() : null,
+          fechaEmision: fechaEmision.trim() || undefined,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo crear la reserva histórica");
+      onCreada(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div style={{ ...cardStyle, border: `1px solid ${T.gold}` }}>
+      <div style={sectionTitleStyle}>➕ Agregar reserva que falta (solo estaba en Aloha)</div>
+      <div style={sectionSubStyle}>
+        Usa esto solo si una reserva de Aloha NO aparece en ninguna sección de esta página (caso raro — la mayoría sí se sincronizó sola y aparece arriba como "sin check-in"). Escribe los datos tal como aparecen en Aloha.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={labelStyle}>Nombre completo del huésped</label>
+          <input autoComplete="off" style={inputStyle} value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} placeholder="Ej. Juan Pérez" />
+        </div>
+        <div>
+          <label style={labelStyle}>Tipo de documento</label>
+          <select style={inputStyle} value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)}>
+            <option value="">Sin especificar</option>
+            <option value="DNI">DNI</option>
+            <option value="Pasaporte">Pasaporte</option>
+            <option value="CE">Carné de Extranjería</option>
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>N° de documento</label>
+          <input autoComplete="off" style={inputStyle} value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={labelStyle}>País</label>
+          <input autoComplete="off" style={inputStyle} value={pais} onChange={(e) => setPais(e.target.value)} placeholder="Opcional" />
+        </div>
+        <div>
+          <label style={labelStyle}>Canal</label>
+          <select style={inputStyle} value={canalOrigen} onChange={(e) => setCanalOrigen(e.target.value)}>
+            {CANALES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>Domo</label>
+          <select style={inputStyle} value={domoCodigo} onChange={(e) => setDomoCodigo(e.target.value)}>
+            <option value="">Sin asignar</option>
+            {domos.map((d) => <option key={d.id} value={d.codigo}>{d.codigo} — {d.nombre}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>Código de reserva en Aloha</label>
+          <input style={inputStyle} value={bookingIdExterno} onChange={(e) => setBookingIdExterno(e.target.value)} placeholder="Opcional" />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <div>
+          <label style={labelStyle}>Fecha de llegada</label>
+          <input type="date" style={inputStyle} value={fechaLlegada} onChange={(e) => setFechaLlegada(e.target.value)} />
+        </div>
+        <div>
+          <label style={labelStyle}>Fecha de salida</label>
+          <input type="date" style={inputStyle} value={fechaSalida} onChange={(e) => setFechaSalida(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>Hospedaje</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={labelStyle}>Monto</label>
+            <input type="number" style={inputStyle} value={hospedajeMonto} onChange={(e) => setHospedajeMonto(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Moneda</label>
+            <select style={inputStyle} value={hospedajeMoneda} onChange={(e) => setHospedajeMoneda(e.target.value)}>
+              <option value="USD">US$</option>
+              <option value="PEN">S/.</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Método de pago</label>
+            <select style={inputStyle} value={hospedajeMetodo} onChange={(e) => setHospedajeMetodo(e.target.value)}>
+              {METODOS.map((m) => <option key={m.valor} value={m.valor}>{m.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 12, marginBottom: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, marginBottom: 8, cursor: "pointer" }}>
+          <input type="checkbox" checked={huboConsumo} onChange={(e) => setHuboConsumo(e.target.checked)} />
+          Hubo consumo de restaurante/bar (monto total, sin detallar ítem por ítem)
+        </label>
+        {huboConsumo && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>Monto</label>
+              <input type="number" style={inputStyle} value={consumoMonto} onChange={(e) => setConsumoMonto(e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Moneda</label>
+              <select style={inputStyle} value={consumoMoneda} onChange={(e) => setConsumoMoneda(e.target.value)}>
+                <option value="PEN">S/.</option>
+                <option value="USD">US$</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Método de pago</label>
+              <select style={inputStyle} value={consumoMetodo} onChange={(e) => setConsumoMetodo(e.target.value)}>
+                {METODOS.map((m) => <option key={m.valor} value={m.valor}>{m.label}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 12, marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>Comprobante electrónico</div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input type="radio" checked={tipoComprobante === "boleta"} onChange={() => setTipoComprobante("boleta")} /> Boleta
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input type="radio" checked={tipoComprobante === "factura"} onChange={() => setTipoComprobante("factura")} /> Factura
+          </label>
+        </div>
+        {tipoComprobante === "factura" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>RUC</label>
+              <input style={inputStyle} value={facturaRuc} onChange={(e) => setFacturaRuc(e.target.value)} maxLength={11} />
+            </div>
+            <div>
+              <label style={labelStyle}>Razón social</label>
+              <input style={inputStyle} value={facturaRazonSocial} onChange={(e) => setFacturaRazonSocial(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <div style={{ marginTop: 10 }}>
+          <label style={labelStyle}>Fecha de emisión (opcional — úsala solo si estás completando ahora una reserva de un mes anterior, para que el comprobante no salga con la fecha de hoy; déjalo vacío para emitir con la fecha de hoy)</label>
+          <input type="date" style={inputStyle} value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)} />
+        </div>
+        <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 8 }}>
+          Se intenta emitir de inmediato contra HaylliERP. Si algo falla, quedará guardada con error — se puede reintentar después desde "Corregir un pago anterior" en Check-out.
+        </div>
+      </div>
+
+      {mostrandoPreview && (
+        <div style={{ border: `1px solid ${T.gold}`, borderRadius: 10, padding: 14, marginBottom: 16, background: "rgba(201,162,75,0.08)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: T.gold }}>
+            Revisa antes de continuar — esto va a crear la reserva y {tipoComprobante ? "emitir un comprobante real ante SUNAT" : "no emitir comprobante todavía"}:
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <div><strong>Huésped:</strong> {nombreCompleto.trim() || "(sin nombre)"}{tipoDocumento ? ` — ${tipoDocumento} ${numeroDocumento.trim() || "(sin número)"}` : ""}</div>
+            <div><strong>Domo:</strong> {domoCodigo || "sin asignar"} · <strong>Canal:</strong> {canalOrigen}</div>
+            <div><strong>Fechas:</strong> {fechaLlegada} → {fechaSalida}</div>
+            <div><strong>Hospedaje:</strong> {hospedajeMoneda === "USD" ? "US$" : "S/."} {Number(hospedajeMonto).toFixed(2)} ({hospedajeMetodo})</div>
+            {huboConsumo && (
+              <div><strong>Consumo:</strong> {consumoMoneda === "USD" ? "US$" : "S/."} {Number(consumoMonto).toFixed(2)} ({consumoMetodo})</div>
+            )}
+            <div><strong>Comprobante:</strong> {tipoComprobante === "factura" ? `Factura — RUC ${facturaRuc} — ${facturaRazonSocial}` : "Boleta"}</div>
+            <div><strong>Fecha de emisión:</strong> {fechaEmision.trim() || "hoy (fecha actual)"}</div>
+          </div>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>
+            Verifica sobre todo el nombre del huésped y el documento — revisa que no se haya autocompletado con los datos de otra persona.
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12.5, color: T.red, marginBottom: 12 }}>⚠️ {error}</div>
+      )}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        {!mostrandoPreview ? (
+          <React.Fragment>
+            <button
+              onClick={() => listo && setMostrandoPreview(true)}
+              disabled={!listo}
+              style={{
+                flex: 1, background: listo ? T.gold : T.cardBorder, color: listo ? "#1C1A20" : T.ivoryMuted,
+                border: "none", borderRadius: 8, padding: "12px 0", fontWeight: 700, fontSize: 13.5,
+                cursor: listo ? "pointer" : "not-allowed",
+              }}
+            >
+              Continuar →
+            </button>
+            <button
+              onClick={onCancelar}
+              style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "12px 18px", fontSize: 13 }}
+            >
+              Cancelar
+            </button>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <button
+              onClick={() => setMostrandoPreview(false)}
+              disabled={enviando}
+              style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "12px 18px", fontSize: 13, cursor: enviando ? "not-allowed" : "pointer" }}
+            >
+              ← Volver a editar
+            </button>
+            <button
+              onClick={guardar}
+              disabled={enviando}
+              style={{
+                flex: 1, background: enviando ? T.cardBorder : T.gold, color: enviando ? T.ivoryMuted : "#1C1A20",
+                border: "none", borderRadius: 8, padding: "12px 0", fontWeight: 700, fontSize: 13.5,
+                cursor: enviando ? "not-allowed" : "pointer",
+              }}
+            >
+              {enviando ? "Guardando..." : "✓ Confirmar, guardar y emitir"}
+            </button>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResultadoCreacion({ resultado, onCerrar }) {
+  const comprobantes = resultado.comprobantes || [];
+  const algunoOk = comprobantes.some((c) => c.ok);
+  const algunoError = comprobantes.some((c) => !c.ok);
+  return (
+    <div style={{ ...cardStyle, border: `1px solid ${T.green}` }}>
+      <div style={{ ...sectionTitleStyle, color: T.green }}>✓ Reserva histórica guardada</div>
+      {comprobantes.length === 0 && (
+        <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>Se guardó la reserva y el pago, sin comprobante (no se marcó boleta/factura).</div>
+      )}
+      {comprobantes.map((c, i) => (
+        <div key={i} style={{ fontSize: 12.5, marginTop: 6 }}>
+          {c.ok ? (
+            <span style={{ color: T.green }}>🧾 {c.concepto}: {c.tipoComprobante} {c.numeroComprobante || ""} — emitida correctamente.</span>
+          ) : (
+            <span style={{ color: T.amber }}>⚠️ {c.concepto}: no se pudo emitir ahora ({c.error || "error desconocido"}). El pago quedó registrado igual — reintenta luego desde "Corregir un pago anterior".</span>
+          )}
+        </div>
+      ))}
+      <button
+        onClick={onCerrar}
+        style={{ marginTop: 14, background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+      >
+        Agregar otra / Volver a la tabla
+      </button>
+    </div>
+  );
+}
+
+function PanelControl() {
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  // Filtro opcional por rango de fechas (pedido de Dante, 2 sep): por
+  // defecto el panel es "permanente" (siempre al día, sin importar el
+  // mes), pero se puede acotar a un rango puntual (ej. 1 al 30 de
+  // setiembre) para revisar un mes en particular como antes.
+  const [desdeFiltro, setDesdeFiltro] = useState("");
+  const [hastaFiltro, setHastaFiltro] = useState("");
+  const [rangoActivo, setRangoActivo] = useState(null); // { desde, hasta } aplicado de verdad
+
+  function cargar(rango) {
+    setCargando(true);
+    setError(null);
+    const qs = rango ? `?desde=${rango.desde}&hasta=${rango.hasta}` : "";
+    fetch(`${API_BASE_URL}/api/panel-control${qs}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { setError(data.error); setCargando(false); return; }
+        setDatos(data);
+        setCargando(false);
+      })
+      .catch(() => { setError("No se pudo cargar el panel de control"); setCargando(false); });
+  }
+  useEffect(() => cargar(rangoActivo), [rangoActivo]);
+
+  function aplicarFiltro() {
+    if (!desdeFiltro || !hastaFiltro) { setError("Elige las dos fechas (desde y hasta) antes de filtrar."); return; }
+    if (desdeFiltro > hastaFiltro) { setError('La fecha "desde" no puede ser posterior a "hasta".'); return; }
+    setRangoActivo({ desde: desdeFiltro, hasta: hastaFiltro });
+  }
+  function quitarFiltro() {
+    setDesdeFiltro("");
+    setHastaFiltro("");
+    setRangoActivo(null);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
+      <div style={{ maxWidth: 760, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>📋 Control de reservas</div>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>Qué falta por hacer: check-ins pendientes, check-outs sin cerrar, y cuentas cerradas sin comprobante — siempre al día, no solo para un mes puntual.</div>
+          </div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        </div>
+
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>📅 Filtrar por rango de fechas (opcional)</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div>
+              <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Desde</div>
+              <input type="date" value={desdeFiltro} onChange={(e) => setDesdeFiltro(e.target.value)}
+                style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "7px 9px", color: T.ivory, fontSize: 13 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Hasta</div>
+              <input type="date" value={hastaFiltro} onChange={(e) => setHastaFiltro(e.target.value)}
+                style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "7px 9px", color: T.ivory, fontSize: 13 }} />
+            </div>
+            <button onClick={aplicarFiltro} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+              Filtrar
+            </button>
+            {rangoActivo && (
+              <button onClick={quitarFiltro} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 16px", fontSize: 12.5, cursor: "pointer" }}>
+                Quitar filtro
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 8 }}>
+            {rangoActivo
+              ? `Mostrando reservas cuya estadía toca el rango ${fechaCorta(rangoActivo.desde)} – ${fechaCorta(rangoActivo.hasta)}.`
+              : "Sin filtro: muestra todo lo pendiente de siempre (no se limita a un mes). Elige un rango para revisar un período puntual, como antes se revisaba agosto."}
+          </div>
+        </div>
+
+        {cargando && <div style={{ color: T.ivoryMuted }}>Cargando…</div>}
+        {error && <div style={{ color: T.red }}>⚠️ {error}</div>}
+
+        {datos && !cargando && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Contador n={datos.llegadasSinCheckin.length} label="sin check-in" color={datos.llegadasSinCheckin.length > 0 ? T.amber : T.ivory} />
+              <Contador n={datos.pendientesCheckout.length} label="sin check-out" color={datos.pendientesCheckout.length > 0 ? T.amber : T.ivory} />
+              <Contador n={datos.sinComprobante.length} label="sin comprobante" color={datos.sinComprobante.length > 0 ? T.amber : T.ivory} />
+              <Contador n={datos.facturadas.length} label="ya facturadas" color={T.green} />
+              {!rangoActivo && <Contador n={datos.llegadasFuturas.length} label="llegan pronto" />}
+            </div>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, textAlign: "center", marginTop: -8 }}>
+              Total pendiente de acción: {datos.llegadasSinCheckin.length + datos.pendientesCheckout.length + datos.sinComprobante.length} reservas (sin contar las ya facturadas{!rangoActivo && " ni las llegadas futuras, que se resuelven solas"}).
+            </div>
+
+            {mostrarFormulario ? (
+              <FormularioReservaHistorica
+                onCancelar={() => setMostrarFormulario(false)}
+                onCreada={(data) => { setResultado(data); setMostrarFormulario(false); cargar(); }}
+              />
+            ) : resultado ? (
+              <ResultadoCreacion resultado={resultado} onCerrar={() => setResultado(null)} />
+            ) : (
+              <button
+                onClick={() => setMostrarFormulario(true)}
+                style={{
+                  background: "transparent", border: `1px dashed ${T.gold}`, color: T.gold,
+                  borderRadius: 12, padding: "14px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+                }}
+              >
+                ➕ Agregar reserva que falta (solo estaba en Aloha)
+              </button>
+            )}
+
+            <SeccionSinCheckin lista={datos.llegadasSinCheckin} />
+            <SeccionPendientesCheckout lista={datos.pendientesCheckout} />
+            <SeccionSinComprobante lista={datos.sinComprobante} />
+            {!rangoActivo && <SeccionLlegadasFuturas lista={datos.llegadasFuturas} />}
+            <SeccionFacturadas lista={datos.facturadas} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PanelControl />);
+</script>
+</body>
+</html>
