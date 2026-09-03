@@ -197,6 +197,307 @@ function descargarHTML(anio, mes, reservas) {
   URL.revokeObjectURL(url);
 }
 
+function montoFmt(n) {
+  if (n == null || isNaN(n)) return "—";
+  return Number(n).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function descargarCSVComprobantes(anio, mes, comprobantes) {
+  const encabezado = ["N° Comprobante", "Tipo", "Fecha emisión", "Cliente", "RUC", "Moneda", "Monto", "Monto US$", "Link"];
+  const filas = comprobantes.map((c) => [
+    c.numeroComprobante || "",
+    c.tipoComprobante || "",
+    c.fechaEmision ? String(c.fechaEmision).slice(0, 10) : "",
+    c.nombreCliente || "",
+    c.facturaRuc || "",
+    c.moneda || "",
+    c.monto != null ? c.monto.toFixed(2) : "",
+    c.montoUsd != null ? c.montoUsd.toFixed(2) : "",
+    c.pdfUrl ? `${API_BASE_URL}${c.pdfUrl}` : "",
+  ]);
+  const escapar = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [encabezado, ...filas].map((fila) => fila.map(escapar).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comprobantes_emitidos_${anio}_${String(mes).padStart(2, "0")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function descargarHTMLComprobantes(anio, mes, comprobantes, totales) {
+  const filasHtml = comprobantes.map((c) => `
+    <tr>
+      <td>${escaparHtml(c.tipoComprobante)} ${escaparHtml(c.numeroComprobante || "—")}</td>
+      <td>${escaparHtml(c.fechaEmision ? String(c.fechaEmision).slice(0, 10) : "—")}</td>
+      <td>${escaparHtml(c.nombreCliente || "—")}</td>
+      <td>${escaparHtml(c.facturaRuc || "—")}</td>
+      <td>${escaparHtml(c.moneda || "—")}</td>
+      <td style="text-align:right">${c.monto != null ? c.monto.toFixed(2) : "—"}</td>
+      <td style="text-align:right">${c.montoUsd != null ? c.montoUsd.toFixed(2) : "—"}</td>
+      <td>${c.pdfUrl ? `<a href="${escaparHtml(API_BASE_URL + c.pdfUrl)}">Ver PDF</a>` : "—"}</td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" />
+<title>Comprobantes emitidos — ${MESES[mes - 1]} ${anio}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #1C1A20; }
+  h1 { font-size: 18px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px 10px; font-size: 13px; text-align: left; }
+  th { background: #f2ede2; }
+  tfoot td { font-weight: bold; background: #f7f3ea; }
+  a { color: #8a6d1f; }
+</style></head>
+<body>
+<h1>Comprobantes emitidos — Miski Samay Domo Boutique — ${MESES[mes - 1]} ${anio}</h1>
+<p>Generado el ${new Date().toLocaleDateString("es-PE")} — para declaración del contador. El mes de cada comprobante es su fecha real de emisión ante SUNAT, no la fecha en que se procesó en el sistema.</p>
+<table>
+<thead><tr>
+<th>N° Comprobante</th><th>Fecha emisión</th><th>Cliente</th><th>RUC</th><th>Moneda</th><th>Monto</th><th>Monto US$</th><th>Link</th>
+</tr></thead>
+<tbody>${filasHtml}</tbody>
+<tfoot><tr>
+<td colspan="5">Total (${totales.cantidad} comprobantes)</td>
+<td style="text-align:right">S/ ${totales.totalPenNativo.toFixed(2)} + US$ ${totales.totalUsdNativo.toFixed(2)}</td>
+<td style="text-align:right">US$ ${totales.totalUsdEquivalente.toFixed(2)}</td>
+<td></td>
+</tr></tfoot>
+</table>
+</body></html>`;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comprobantes_emitidos_${anio}_${String(mes).padStart(2, "0")}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ReporteComprobantes() {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  function cargar() {
+    setCargando(true);
+    setError(null);
+    fetch(`${API_BASE_URL}/api/reportes/comprobantes?anio=${anio}&mes=${mes}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { setError(data.error); setCargando(false); return; }
+        setDatos(data);
+        setCargando(false);
+      })
+      .catch(() => { setError("No se pudo cargar el reporte de comprobantes"); setCargando(false); });
+  }
+  useEffect(cargar, [anio, mes]);
+
+  const comprobantes = datos ? datos.comprobantes : [];
+  const totales = datos ? datos.totales : null;
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>🧾 Comprobantes emitidos</div>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+              Un renglón por cada comprobante realmente emitido en el mes elegido, listo para mandar al contador.
+            </div>
+          </div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        </div>
+
+        <div style={{
+          background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10,
+          padding: "10px 14px", marginBottom: 16, fontSize: 12, color: T.ivoryMuted,
+        }}>
+          ℹ️ El mes de cada comprobante es su fecha real de emisión ante SUNAT (aunque se haya procesado en nuestro sistema
+          días después) — así un comprobante nunca sale reportado en dos meses distintos, ni se repite si vuelves a generar
+          el reporte de un mes ya declarado.
+        </div>
+
+        <div className="no-imprimir" style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Año</div>
+            <select
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}
+            >
+              {[hoy.getFullYear() - 1, hoy.getFullYear(), hoy.getFullYear() + 1].map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Mes</div>
+            <select
+              value={mes}
+              onChange={(e) => setMes(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}
+            >
+              {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={() => comprobantes.length > 0 && descargarCSVComprobantes(anio, mes, comprobantes)}
+            disabled={comprobantes.length === 0}
+            style={{
+              background: comprobantes.length > 0 ? T.gold : T.cardBorder,
+              color: comprobantes.length > 0 ? "#1C1A20" : T.ivoryMuted,
+              border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: comprobantes.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            ⬇ Descargar CSV
+          </button>
+          <button
+            onClick={() => comprobantes.length > 0 && descargarHTMLComprobantes(anio, mes, comprobantes, totales)}
+            disabled={comprobantes.length === 0}
+            style={{
+              background: "transparent", color: comprobantes.length > 0 ? T.ivory : T.ivoryMuted,
+              border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: comprobantes.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            ⬇ Descargar HTML
+          </button>
+          <button
+            onClick={() => comprobantes.length > 0 && window.print()}
+            disabled={comprobantes.length === 0}
+            style={{
+              background: "transparent", color: comprobantes.length > 0 ? T.ivory : T.ivoryMuted,
+              border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: comprobantes.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            🖨️ Exportar PDF
+          </button>
+        </div>
+
+        {cargando && <div style={{ color: T.ivoryMuted }}>Cargando…</div>}
+        {error && <div style={{ color: T.red }}>⚠️ {error}</div>}
+
+        {datos && !cargando && (
+          <div id="reporte-imprimible">
+            <div className="solo-impresion">
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Miski Samay Domo Boutique — Comprobantes emitidos {MESES[mes - 1]} {anio}</div>
+              <div style={{ fontSize: 12, marginTop: 2 }}>Generado el {new Date().toLocaleDateString("es-PE")}</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 140, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{totales.cantidad}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>comprobantes emitidos</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 140, textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.green }}>US$ {montoFmt(totales.totalUsdEquivalente)}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total equivalente en US$</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 140, textAlign: "center" }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>S/ {montoFmt(totales.totalPenNativo)} + US$ {montoFmt(totales.totalUsdNativo)}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total en moneda original</div>
+              </div>
+            </div>
+
+            {totales.sinTipoCambio > 0 && (
+              <div style={{ color: T.amber, fontSize: 12, marginBottom: 12 }}>
+                ⚠️ {totales.sinTipoCambio} comprobante(s) en soles no tienen tipo de cambio registrado — no se pudieron convertir a US$ (aparecen como "—" en esa columna).
+              </div>
+            )}
+
+            {comprobantes.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>No hay comprobantes emitidos para {MESES[mes - 1]} {anio}.</div>
+            ) : (
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>N° Comprobante</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Fecha</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Cliente</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Moneda</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Monto</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Monto US$</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comprobante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comprobantes.map((c, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                        <td style={{ fontSize: 12.5, fontWeight: 600 }}>{c.tipoComprobante} {c.numeroComprobante || "—"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(c.fechaEmision)}</td>
+                        <td style={{ fontSize: 12.5 }}>{c.nombreCliente}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{c.moneda}</td>
+                        <td style={{ fontSize: 12.5, textAlign: "right" }}>{montoFmt(c.monto)}</td>
+                        <td style={{ fontSize: 12.5, textAlign: "right", color: T.green }}>{c.montoUsd != null ? montoFmt(c.montoUsd) : "—"}</td>
+                        <td style={{ fontSize: 12.5 }} className="no-imprimir">
+                          {c.pdfUrl ? (
+                            <a href={`${API_BASE_URL}${c.pdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: T.green }}>Ver PDF</a>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4} style={{ fontSize: 12.5, fontWeight: 800, paddingTop: 12 }}>Total ({totales.cantidad})</td>
+                      <td style={{ fontSize: 12.5, fontWeight: 800, textAlign: "right", paddingTop: 12 }}>
+                        S/ {montoFmt(totales.totalPenNativo)} + US$ {montoFmt(totales.totalUsdNativo)}
+                      </td>
+                      <td style={{ fontSize: 12.5, fontWeight: 800, textAlign: "right", color: T.green, paddingTop: 12 }}>
+                        US$ {montoFmt(totales.totalUsdEquivalente)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function tabEstilo(activo) {
+  return {
+    background: activo ? T.gold : "transparent",
+    color: activo ? "#1C1A20" : T.ivory,
+    border: `1px solid ${activo ? T.gold : T.cardBorder}`,
+    borderRadius: 8,
+    padding: "8px 14px",
+    fontWeight: 700,
+    fontSize: 12.5,
+    cursor: "pointer",
+  };
+}
+
+function App() {
+  const [tab, setTab] = useState("mensual");
+  return (
+    <div>
+      <div className="no-imprimir" style={{ background: T.bg, paddingTop: 16 }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", gap: 8, padding: "0 24px" }}>
+          <button onClick={() => setTab("mensual")} style={tabEstilo(tab === "mensual")}>▤ Reporte mensual</button>
+          <button onClick={() => setTab("comprobantes")} style={tabEstilo(tab === "comprobantes")}>🧾 Comprobantes emitidos (contador)</button>
+        </div>
+      </div>
+      {tab === "mensual" ? <ReportesMensual /> : <ReporteComprobantes />}
+    </div>
+  );
+}
+
 function ReportesMensual() {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -362,7 +663,7 @@ function ReportesMensual() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<ReportesMensual />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
