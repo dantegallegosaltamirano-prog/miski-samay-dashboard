@@ -114,7 +114,31 @@ function SeccionPendientesCheckout({ lista }) {
   );
 }
 
-function SeccionSinCheckin({ lista }) {
+function SeccionSinCheckin({ lista, onCambio }) {
+  const [confirmandoId, setConfirmandoId] = useState(null);
+  const [cancelandoId, setCancelandoId] = useState(null);
+  const [errorCancelar, setErrorCancelar] = useState(null);
+
+  // Cancelar (pedido de Dante, 2 sep): a veces Aloha/Booking sincroniza una
+  // reserva por duplicado — mismas fechas, mismo huésped, pero SIN domo —
+  // junto a la reserva real que sí se completó (con domo, ya facturada), o
+  // el huésped canceló del lado de Aloha y eso nunca se reflejó aquí (el
+  // sync por iCal no avisa cancelaciones). "Marcar como cancelada" la saca
+  // de esta lista sin borrar nada de la base — solo cambia su estado.
+  function cancelar(id) {
+    setCancelandoId(id);
+    setErrorCancelar(null);
+    fetch(`${API_BASE_URL}/api/reservas/${id}/cancelar`, { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        setCancelandoId(null);
+        if (data.error) { setErrorCancelar(data.error); return; }
+        setConfirmandoId(null);
+        onCambio && onCambio();
+      })
+      .catch(() => { setCancelandoId(null); setErrorCancelar("No se pudo conectar con el backend."); });
+  }
+
   return (
     <div style={{ ...cardStyle, border: `1px solid ${T.amber}` }}>
       <div style={{ ...sectionTitleStyle, color: T.amber }}>
@@ -122,22 +146,55 @@ function SeccionSinCheckin({ lista }) {
       </div>
       <div style={sectionSubStyle}>
         La sincronización automática ya las creó en la plataforma (con nombre "Por confirmar" hasta que se haga el check-in), pero todavía nadie llenó los datos reales del huésped. Conviene ir de la más antigua a la más nueva: completa el check-in con los datos reales, luego carga sus consumos (Restaurante/Bar), y recién ahí aparecerá en "Con check-in, sin check-out" para cerrar la cuenta y facturar.
+        Si una reserva es en realidad un duplicado de otra que ya se procesó, o el huésped canceló y nunca llegó, usa "🗑" para marcarla como cancelada y sacarla de esta lista.
       </div>
+      {errorCancelar && (
+        <div style={{ fontSize: 12, color: T.red, marginBottom: 8 }}>⚠️ {errorCancelar}</div>
+      )}
       {lista.length === 0 ? (
         <div style={{ fontSize: 12.5, color: T.ivoryMuted }}>No hay ninguna pendiente. 🎉</div>
       ) : (
         <div>
           {lista.map((r) => (
             <FilaReserva key={r.reserva_id} r={r}>
-              <a
-                href={`checkin.html?id=${r.reserva_id}`}
-                style={{
-                  background: T.amber, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
-                  textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
-                }}
-              >
-                Completar check-in →
-              </a>
+              {confirmandoId === r.reserva_id ? (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: T.ivoryMuted, whiteSpace: "nowrap" }}>¿Cancelar esta reserva?</span>
+                  <button
+                    onClick={() => cancelar(r.reserva_id)}
+                    disabled={cancelandoId === r.reserva_id}
+                    style={{ background: T.red, color: "#fff", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 700, fontSize: 11.5, cursor: cancelandoId === r.reserva_id ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
+                  >
+                    {cancelandoId === r.reserva_id ? "Cancelando..." : "Sí, cancelar"}
+                  </button>
+                  <button
+                    onClick={() => setConfirmandoId(null)}
+                    disabled={cancelandoId === r.reserva_id}
+                    style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "7px 10px", fontSize: 11.5, cursor: "pointer" }}
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <a
+                    href={`checkin.html?id=${r.reserva_id}`}
+                    style={{
+                      background: T.amber, color: "#1C1A20", padding: "7px 14px", borderRadius: 8,
+                      textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                    }}
+                  >
+                    Completar check-in →
+                  </a>
+                  <button
+                    onClick={() => setConfirmandoId(r.reserva_id)}
+                    title="Marcar como cancelada / duplicada (ya no aparece aquí)"
+                    style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "7px 9px", fontSize: 12, cursor: "pointer" }}
+                  >
+                    🗑
+                  </button>
+                </div>
+              )}
             </FilaReserva>
           ))}
         </div>
@@ -685,7 +742,7 @@ function PanelControl() {
               </button>
             )}
 
-            <SeccionSinCheckin lista={datos.llegadasSinCheckin} />
+            <SeccionSinCheckin lista={datos.llegadasSinCheckin} onCambio={() => cargar(rangoActivo)} />
             <SeccionPendientesCheckout lista={datos.pendientesCheckout} />
             <SeccionSinComprobante lista={datos.sinComprobante} />
             {!rangoActivo && <SeccionLlegadasFuturas lista={datos.llegadasFuturas} />}
