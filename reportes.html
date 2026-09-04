@@ -203,7 +203,7 @@ function montoFmt(n) {
 }
 
 function descargarCSVComprobantes(anio, mes, comprobantes) {
-  const encabezado = ["N° Comprobante", "Tipo", "Fecha emisión", "Cliente", "RUC", "Moneda", "Monto", "Monto US$", "Link"];
+  const encabezado = ["N° Comprobante", "Tipo", "Fecha emisión", "Cliente", "RUC", "Moneda", "Monto S/", "Monto US$", "Link"];
   const filas = comprobantes.map((c) => [
     c.numeroComprobante || "",
     c.tipoComprobante || "",
@@ -211,7 +211,7 @@ function descargarCSVComprobantes(anio, mes, comprobantes) {
     c.nombreCliente || "",
     c.facturaRuc || "",
     c.moneda || "",
-    c.monto != null ? c.monto.toFixed(2) : "",
+    c.montoPen != null ? c.montoPen.toFixed(2) : "",
     c.montoUsd != null ? c.montoUsd.toFixed(2) : "",
     c.pdfUrl ? `${API_BASE_URL}${c.pdfUrl}` : "",
   ]);
@@ -236,7 +236,7 @@ function descargarHTMLComprobantes(anio, mes, comprobantes, totales) {
       <td>${escaparHtml(c.nombreCliente || "—")}</td>
       <td>${escaparHtml(c.facturaRuc || "—")}</td>
       <td>${escaparHtml(c.moneda || "—")}</td>
-      <td style="text-align:right">${c.monto != null ? c.monto.toFixed(2) : "—"}</td>
+      <td style="text-align:right">${c.montoPen != null ? c.montoPen.toFixed(2) : "—"}</td>
       <td style="text-align:right">${c.montoUsd != null ? c.montoUsd.toFixed(2) : "—"}</td>
       <td>${c.pdfUrl ? `<a href="${escaparHtml(API_BASE_URL + c.pdfUrl)}">Ver PDF</a>` : "—"}</td>
     </tr>`).join("");
@@ -255,16 +255,16 @@ function descargarHTMLComprobantes(anio, mes, comprobantes, totales) {
 </style></head>
 <body>
 <h1>Comprobantes emitidos — Miski Samay Domo Boutique — ${MESES[mes - 1]} ${anio}</h1>
-<p>Generado el ${new Date().toLocaleDateString("es-PE")} — para declaración del contador. El mes de cada comprobante es su fecha real de emisión ante SUNAT, no la fecha en que se procesó en el sistema.</p>
+<p>Generado el ${new Date().toLocaleDateString("es-PE")} — para declaración del contador. El mes de cada comprobante es su fecha real de emisión ante SUNAT, no la fecha en que se procesó en el sistema. Cada comprobante está solo en su moneda real (soles o dólares), sin conversiones.</p>
 <table>
 <thead><tr>
-<th>N° Comprobante</th><th>Fecha emisión</th><th>Cliente</th><th>RUC</th><th>Moneda</th><th>Monto</th><th>Monto US$</th><th>Link</th>
+<th>N° Comprobante</th><th>Fecha emisión</th><th>Cliente</th><th>RUC</th><th>Moneda</th><th>Monto S/</th><th>Monto US$</th><th>Link</th>
 </tr></thead>
 <tbody>${filasHtml}</tbody>
 <tfoot><tr>
 <td colspan="5">Total (${totales.cantidad} comprobantes)</td>
-<td style="text-align:right">S/ ${totales.totalPenNativo.toFixed(2)} + US$ ${totales.totalUsdNativo.toFixed(2)}</td>
-<td style="text-align:right">US$ ${totales.totalUsdEquivalente.toFixed(2)}</td>
+<td style="text-align:right">S/ ${totales.totalPen.toFixed(2)}</td>
+<td style="text-align:right">US$ ${totales.totalUsd.toFixed(2)}</td>
 <td></td>
 </tr></tfoot>
 </table>
@@ -400,20 +400,14 @@ function ReporteComprobantes() {
                 <div style={{ fontSize: 11, color: T.ivoryMuted }}>comprobantes emitidos</div>
               </div>
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 140, textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: T.green }}>US$ {montoFmt(totales.totalUsdEquivalente)}</div>
-                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total equivalente en US$</div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>S/ {montoFmt(totales.totalPen)}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total en soles</div>
               </div>
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 140, textAlign: "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 800 }}>S/ {montoFmt(totales.totalPenNativo)} + US$ {montoFmt(totales.totalUsdNativo)}</div>
-                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total en moneda original</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.green }}>US$ {montoFmt(totales.totalUsd)}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>total en dólares</div>
               </div>
             </div>
-
-            {totales.sinTipoCambio > 0 && (
-              <div style={{ color: T.amber, fontSize: 12, marginBottom: 12 }}>
-                ⚠️ {totales.sinTipoCambio} comprobante(s) en soles no tienen tipo de cambio registrado — no se pudieron convertir a US$ (aparecen como "—" en esa columna).
-              </div>
-            )}
 
             {comprobantes.length === 0 ? (
               <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>No hay comprobantes emitidos para {MESES[mes - 1]} {anio}.</div>
@@ -426,7 +420,7 @@ function ReporteComprobantes() {
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Fecha</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Cliente</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Moneda</th>
-                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Monto</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Monto S/</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Monto US$</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comprobante</th>
                     </tr>
@@ -438,7 +432,7 @@ function ReporteComprobantes() {
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(c.fechaEmision)}</td>
                         <td style={{ fontSize: 12.5 }}>{c.nombreCliente}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{c.moneda}</td>
-                        <td style={{ fontSize: 12.5, textAlign: "right" }}>{montoFmt(c.monto)}</td>
+                        <td style={{ fontSize: 12.5, textAlign: "right" }}>{c.montoPen != null ? montoFmt(c.montoPen) : "—"}</td>
                         <td style={{ fontSize: 12.5, textAlign: "right", color: T.green }}>{c.montoUsd != null ? montoFmt(c.montoUsd) : "—"}</td>
                         <td style={{ fontSize: 12.5 }} className="no-imprimir">
                           {c.pdfUrl ? (
@@ -452,10 +446,10 @@ function ReporteComprobantes() {
                     <tr>
                       <td colSpan={4} style={{ fontSize: 12.5, fontWeight: 800, paddingTop: 12 }}>Total ({totales.cantidad})</td>
                       <td style={{ fontSize: 12.5, fontWeight: 800, textAlign: "right", paddingTop: 12 }}>
-                        S/ {montoFmt(totales.totalPenNativo)} + US$ {montoFmt(totales.totalUsdNativo)}
+                        S/ {montoFmt(totales.totalPen)}
                       </td>
                       <td style={{ fontSize: 12.5, fontWeight: 800, textAlign: "right", color: T.green, paddingTop: 12 }}>
-                        US$ {montoFmt(totales.totalUsdEquivalente)}
+                        US$ {montoFmt(totales.totalUsd)}
                       </td>
                       <td></td>
                     </tr>
