@@ -54,6 +54,49 @@ function iconoCategoria(valor) {
 return ICONO_CATEGORIA[valor] || "📦";
 }
 
+// Quita tildes y pasa a minúsculas para que buscar "mara" encuentre
+// "Maracuyá" sin que el acento importe.
+function normalizar(texto) {
+return String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+// Fila compacta tipo lista (pedido de Dante, 4 sep): antes cada producto
+// de Restaurant/Bar/Otros era una tarjeta grande en grilla, igual que
+// "Editar menú" era antes de que lo compactáramos — ahora es un renglón
+// angosto (nombre + descripción a la izquierda, precio y +/- a la
+// derecha), igual de compacto que esa pantalla, para que quepan muchos
+// productos sin scroll interminable.
+function FilaProducto({ producto, cant, onCambiar }) {
+return (
+<div style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+padding: "9px 12px", borderRadius: 10, marginBottom: 6,
+border: `1px solid ${cant > 0 ? T.gold : T.cardBorder}`,
+background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
+}}>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 13, fontWeight: cant > 0 ? 700 : 600, color: cant > 0 ? T.gold : T.ivory, lineHeight: 1.25 }}>{producto.nombre}</div>
+{producto.descripcion && (
+<div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 1, lineHeight: 1.3 }}>{producto.descripcion}</div>
+)}
+</div>
+<div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+<div style={{ fontSize: 12.5, color: T.gold, fontWeight: 700, minWidth: 58, textAlign: "right" }}>S/ {Number(producto.precio).toFixed(2)}</div>
+<button onClick={() => onCambiar(-1)} disabled={cant === 0} style={{
+width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 15, cursor: cant === 0 ? "default" : "pointer",
+opacity: cant === 0 ? 0.4 : 1, lineHeight: 1, flexShrink: 0,
+}}>–</button>
+<div style={{ width: 16, textAlign: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>{cant}</div>
+<button onClick={() => onCambiar(1)} style={{
+width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
+background: T.bg, color: T.ivory, fontSize: 15, cursor: "pointer", lineHeight: 1, flexShrink: 0,
+}}>+</button>
+</div>
+</div>
+);
+}
+
 const idBloqueado = new URLSearchParams(window.location.search).get("id");
 const tabInicial = new URLSearchParams(window.location.search).get("tab");
 
@@ -179,6 +222,11 @@ const [cargandoProductos, setCargandoProductos] = useState(true);
 
 const [carrito, setCarrito] = useState({});
 const [notasDesayuno, setNotasDesayuno] = useState("");
+const [busqueda, setBusqueda] = useState("");
+
+// Limpia lo buscado al cambiar de categoría, para no arrastrar "cerv"
+// de Bar cuando el mozo pasa a mirar Restaurant.
+React.useEffect(() => { setBusqueda(""); }, [categoriaActiva]);
 
 const [enviando, setEnviando] = useState(false);
 const [ultimoOk, setUltimoOk] = useState(null);
@@ -291,7 +339,9 @@ setEnviando(false);
 }
 }
 
-const productosActivos = categoriaActiva ? productos.filter(p => p.categoria === categoriaActiva) : [];
+const productosActivos = categoriaActiva
+? productos.filter(p => p.categoria === categoriaActiva && normalizar(p.nombre).includes(normalizar(busqueda)))
+: [];
 const hayCarrito = cantidadItems > 0;
 
 return (
@@ -394,40 +444,29 @@ color: activa ? T.gold : T.ivory,
 <div>
 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos — {etiquetaCategoria(categoriaActiva)}</div>
 
+<input
+type="text"
+value={busqueda}
+onChange={(e) => setBusqueda(e.target.value)}
+placeholder={`Buscar en ${etiquetaCategoria(categoriaActiva)}... (ej: "mara")`}
+style={{
+width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10,
+color: T.ivory, padding: "10px 12px", fontSize: 13.5, marginBottom: 10, fontFamily: "inherit",
+}}
+/>
+
 {productosActivos.length === 0 ? (
-<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay productos activos en esta categoría.</div>
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>
+{busqueda.trim()
+? `No se encontró ningún producto con "${busqueda}".`
+: "No hay productos activos en esta categoría."}
+</div>
 ) : (
-<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+<div style={{ marginBottom: 20 }}>
 {productosActivos.map((p) => {
 const cant = carrito[p.id]?.cantidad || 0;
 return (
-<div key={p.id} style={{
-display: "flex", flexDirection: "column", justifyContent: "space-between",
-padding: "12px", borderRadius: 12, minHeight: 150,
-border: cant > 0 ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
-background: cant > 0 ? "rgba(201,162,75,0.08)" : T.card,
-}}>
-<div>
-<div style={{ fontSize: 20, marginBottom: 4 }}>{iconoCategoria(p.categoria)}</div>
-<div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.25, marginBottom: 3 }}>{p.nombre}</div>
-{p.descripcion && (
-<div style={{ fontSize: 11, color: T.ivoryMuted, lineHeight: 1.3, marginBottom: 6 }}>{p.descripcion}</div>
-)}
-<div style={{ fontSize: 13, color: T.gold, fontWeight: 700 }}>S/ {Number(p.precio).toFixed(2)}</div>
-</div>
-<div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 10 }}>
-<button onClick={() => cambiarCantidad(p, -1)} disabled={cant === 0} style={{
-width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-background: T.bg, color: T.ivory, fontSize: 16, cursor: cant === 0 ? "default" : "pointer",
-opacity: cant === 0 ? 0.4 : 1,
-}}>–</button>
-<div style={{ width: 18, textAlign: "center", fontSize: 14, fontWeight: 700 }}>{cant}</div>
-<button onClick={() => cambiarCantidad(p, 1)} style={{
-width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.cardBorder}`,
-background: T.bg, color: T.ivory, fontSize: 16, cursor: "pointer",
-}}>+</button>
-</div>
-</div>
+<FilaProducto key={p.id} producto={p} cant={cant} onCambiar={(delta) => cambiarCantidad(p, delta)} />
 );
 })}
 </div>
