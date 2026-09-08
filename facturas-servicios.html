@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Facturación de servicios</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const T = {
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+
+function hoyISO() {
+return new Date().toISOString().slice(0, 10);
+}
+function sumarDias(fechaISO, dias) {
+const d = new Date(fechaISO + "T00:00:00");
+d.setDate(d.getDate() + dias);
+return d.toISOString().slice(0, 10);
+}
+function fechaCorta(f) {
+if (!f) return "—";
+const d = new Date(String(f).slice(0, 10) + "T00:00:00");
+if (isNaN(d.getTime())) return "—";
+return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
+}
+function diasEntre(desdeISO, hastaISO) {
+const a = new Date(desdeISO + "T00:00:00");
+const b = new Date(hastaISO + "T00:00:00");
+return Math.round((b - a) / 86400000);
+}
+
+const inputStyle = {
+width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+color: T.ivory, padding: "9px 12px", fontSize: 13.5, fontFamily: "inherit",
+};
+const labelStyle = { fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4, fontWeight: 600 };
+
+function Campo({ label, children }) {
+return (
+<div style={{ marginBottom: 14 }}>
+<div style={labelStyle}>{label}</div>
+{children}
+</div>
+);
+}
+
+function FormularioFactura({ onCreada }) {
+const [clienteRuc, setClienteRuc] = useState("");
+const [clienteRazonSocial, setClienteRazonSocial] = useState("");
+const [descripcion, setDescripcion] = useState("");
+const [moneda, setMoneda] = useState("PEN");
+const [monto, setMonto] = useState("");
+const [fechaEmision, setFechaEmision] = useState(hoyISO());
+const [fechaVencimiento, setFechaVencimiento] = useState(sumarDias(hoyISO(), 30));
+const [enviando, setEnviando] = useState(false);
+const [error, setError] = useState(null);
+const [ok, setOk] = useState(null);
+
+function limpiar() {
+setClienteRuc(""); setClienteRazonSocial(""); setDescripcion("");
+setMonto(""); setFechaEmision(hoyISO()); setFechaVencimiento(sumarDias(hoyISO(), 30));
+}
+
+async function generar() {
+setError(null);
+setOk(null);
+if (!/^\d{11}$/.test(clienteRuc.trim())) { setError("El RUC debe tener 11 dígitos."); return; }
+if (!clienteRazonSocial.trim()) { setError("Falta la razón social del cliente."); return; }
+if (!descripcion.trim()) { setError("Falta la descripción (vehículo, período de alquiler, etc.)."); return; }
+if (!monto || Number(monto) <= 0) { setError("Indica un monto válido."); return; }
+if (!fechaVencimiento) { setError("Indica la fecha de vencimiento."); return; }
+
+setEnviando(true);
+try {
+const resp = await fetch(`${API_BASE_URL}/api/facturas-servicios`, {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+clienteRuc: clienteRuc.trim(),
+clienteRazonSocial: clienteRazonSocial.trim(),
+descripcion: descripcion.trim(),
+moneda,
+monto: Number(monto),
+fechaEmision,
+fechaVencimiento,
+}),
+});
+const data = await resp.json();
+if (data.ok) {
+setOk({ numeroComprobante: data.numeroComprobante, id: data.id });
+limpiar();
+onCreada && onCreada();
+} else {
+setError(data.error || "No se pudo emitir la factura.");
+onCreada && onCreada(); // igual refresca la lista: queda guardada en estado "error", reintentable
+}
+} catch (err) {
+setError("No se pudo conectar con el servidor.");
+} finally {
+setEnviando(false);
+}
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20, marginBottom: 24 }}>
+<div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🚐 Nueva factura de servicio</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 16 }}>
+Para servicios que no vienen de una reserva de hospedaje — por ejemplo, alquiler de una camioneta de Miski Samay a una empresa, con pago a crédito (1-2 meses después).
+</div>
+
+{ok && (
+<div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.green }}>
+✓ Factura {ok.numeroComprobante || ""} emitida.{" "}
+<a href={`${API_BASE_URL}/api/facturas-servicios/${ok.id}/comprobante-pdf`} target="_blank" rel="noopener noreferrer" style={{ color: T.green, textDecoration: "underline" }}>Ver PDF</a>
+</div>
+)}
+{error && (
+<div style={{ background: "rgba(184,63,50,0.12)", border: `1px solid ${T.red}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#D98A7D" }}>
+⚠️ {error}
+</div>
+)}
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+<Campo label="RUC del cliente">
+<input style={inputStyle} value={clienteRuc} onChange={(e) => setClienteRuc(e.target.value.replace(/\D/g, "").slice(0, 11))} placeholder="20605979034" inputMode="numeric" />
+</Campo>
+<Campo label="Razón social del cliente">
+<input style={inputStyle} value={clienteRazonSocial} onChange={(e) => setClienteRazonSocial(e.target.value)} placeholder="Empresa S.A.C." />
+</Campo>
+</div>
+
+<Campo label="Descripción del servicio (vehículo, período de alquiler, etc.)">
+<textarea style={{ ...inputStyle, resize: "vertical" }} rows={2} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej: Alquiler de camioneta Toyota Hilux, placa ABC-123, del 01/09/2026 al 30/09/2026" />
+</Campo>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+<Campo label="Moneda">
+<select style={inputStyle} value={moneda} onChange={(e) => setMoneda(e.target.value)}>
+<option value="PEN">Soles (S/)</option>
+<option value="USD">Dólares (US$)</option>
+</select>
+</Campo>
+<Campo label={`Monto (${moneda === "PEN" ? "S/" : "US$"})`}>
+<input style={inputStyle} type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0.00" />
+</Campo>
+</div>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+<Campo label="Fecha de emisión">
+<input style={inputStyle} type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)} />
+</Campo>
+<Campo label="Fecha de vencimiento (cuándo debe pagar)">
+<input style={inputStyle} type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} />
+</Campo>
+</div>
+
+<div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+<button onClick={() => setFechaVencimiento(sumarDias(fechaEmision, 30))} style={{ background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>+30 días</button>
+<button onClick={() => setFechaVencimiento(sumarDias(fechaEmision, 60))} style={{ background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>+60 días</button>
+</div>
+
+<button onClick={generar} disabled={enviando} style={{
+width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "12px 0", fontSize: 14, fontWeight: 700, cursor: enviando ? "default" : "pointer", opacity: enviando ? 0.7 : 1,
+}}>
+{enviando ? "Generando..." : "✓ Generar factura"}
+</button>
+</div>
+);
+}
+
+function FilaFactura({ f, onMarcarPagado, onReintentar }) {
+const hoy = hoyISO();
+const vencida = f.estado_pago === "pendiente" && f.fecha_vencimiento < hoy;
+const dias = diasEntre(hoy, f.fecha_vencimiento);
+const [confirmando, setConfirmando] = useState(false);
+const [procesando, setProcesando] = useState(false);
+
+return (
+<div style={{
+padding: "12px 14px", borderRadius: 12, marginBottom: 8,
+border: `1px solid ${vencida ? T.red : T.cardBorder}`,
+background: T.card,
+}}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 13.5, fontWeight: 700 }}>{f.cliente_razon_social} <span style={{ color: T.ivoryMuted, fontWeight: 500 }}>— RUC {f.cliente_ruc}</span></div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>{f.descripcion}</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginTop: 4 }}>
+Emitida: {fechaCorta(f.fecha_emision)} · Vence: {fechaCorta(f.fecha_vencimiento)}
+{f.estado_pago === "pendiente" && (
+<span style={{ color: vencida ? T.red : T.amber, fontWeight: 700 }}>
+{" · "}{vencida ? `vencida hace ${-dias} día${-dias === 1 ? "" : "s"}` : `faltan ${dias} día${dias === 1 ? "" : "s"}`}
+</span>
+)}
+</div>
+</div>
+<div style={{ textAlign: "right", flexShrink: 0 }}>
+<div style={{ fontSize: 15, fontWeight: 800, color: T.gold }}>
+{f.moneda === "PEN" ? "S/" : "US$"} {Number(f.monto).toFixed(2)}
+</div>
+<div style={{ fontSize: 11, color: f.comprobante_estado === "emitido" ? T.green : f.comprobante_estado === "error" ? T.red : T.ivoryMuted, marginTop: 2 }}>
+{f.comprobante_estado === "emitido" ? `✅ ${f.numero_comprobante || "emitida"}` : f.comprobante_estado === "error" ? "⚠️ error al emitir" : "⏳ pendiente"}
+</div>
+</div>
+</div>
+
+<div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+{f.comprobante_estado === "emitido" && (
+<a href={`${API_BASE_URL}/api/facturas-servicios/${f.id}/comprobante-pdf`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: T.green }}>Ver PDF</a>
+)}
+{f.comprobante_estado === "error" && (
+<React.Fragment>
+<span style={{ fontSize: 11, color: "#D98A7D" }} title={f.comprobante_error}>{f.comprobante_error}</span>
+<button onClick={async () => { setProcesando(true); await onReintentar(f.id); setProcesando(false); }} disabled={procesando} style={{
+background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, cursor: "pointer",
+}}>
+{procesando ? "Reintentando..." : "Reintentar emisión"}
+</button>
+</React.Fragment>
+)}
+{f.estado_pago === "pendiente" && f.comprobante_estado === "emitido" && (
+confirmando ? (
+<React.Fragment>
+<span style={{ fontSize: 11, color: T.ivoryMuted }}>¿Ya pagó?</span>
+<button onClick={async () => { setProcesando(true); await onMarcarPagado(f.id); setProcesando(false); setConfirmando(false); }} disabled={procesando} style={{
+background: T.green, color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+}}>
+{procesando ? "..." : "Sí, ya pagó"}
+</button>
+<button onClick={() => setConfirmando(false)} style={{ background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, cursor: "pointer" }}>No</button>
+</React.Fragment>
+) : (
+<button onClick={() => setConfirmando(true)} style={{
+background: "transparent", border: `1px solid ${T.green}`, color: T.green, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+}}>
+✓ Marcar como pagado
+</button>
+)
+)}
+{f.estado_pago === "pagado" && (
+<span style={{ fontSize: 11.5, color: T.green }}>✓ Pagado el {fechaCorta(f.fecha_pago)}</span>
+)}
+</div>
+</div>
+);
+}
+
+function FacturasServicios() {
+const [facturas, setFacturas] = useState(null);
+const [cargando, setCargando] = useState(true);
+const [verPagadas, setVerPagadas] = useState(false);
+
+function cargar() {
+setCargando(true);
+fetch(`${API_BASE_URL}/api/facturas-servicios`)
+.then((r) => r.json())
+.then((data) => { setFacturas(Array.isArray(data) ? data : []); setCargando(false); })
+.catch(() => setCargando(false));
+}
+useEffect(cargar, []);
+
+async function marcarPagado(id) {
+await fetch(`${API_BASE_URL}/api/facturas-servicios/${id}/marcar-pagado`, { method: "POST" });
+cargar();
+}
+async function reintentar(id) {
+await fetch(`${API_BASE_URL}/api/facturas-servicios/${id}/reintentar`, { method: "POST" });
+cargar();
+}
+
+const pendientes = (facturas || []).filter((f) => f.estado_pago === "pendiente");
+const pagadas = (facturas || []).filter((f) => f.estado_pago === "pagado");
+const vencidas = pendientes.filter((f) => f.comprobante_estado === "emitido" && f.fecha_vencimiento < hoyISO());
+const totalPorCobrarPen = pendientes.filter(f => f.moneda === "PEN").reduce((a, f) => a + Number(f.monto), 0);
+const totalPorCobrarUsd = pendientes.filter(f => f.moneda === "USD").reduce((a, f) => a + Number(f.monto), 0);
+
+return (
+<div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
+<div style={{ maxWidth: 720, margin: "0 auto" }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+<div>
+<div style={{ fontSize: 20, fontWeight: 800 }}>🚐 Facturación de servicios</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>Alquiler de camionetas y otros servicios a crédito, sin reserva de por medio.</div>
+</div>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+</div>
+
+<FormularioFactura onCreada={cargar} />
+
+{!cargando && pendientes.length > 0 && (
+<div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 130, textAlign: "center" }}>
+<div style={{ fontSize: 20, fontWeight: 800 }}>{pendientes.length}</div>
+<div style={{ fontSize: 11, color: T.ivoryMuted }}>por cobrar</div>
+</div>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 130, textAlign: "center" }}>
+<div style={{ fontSize: 20, fontWeight: 800, color: vencidas.length > 0 ? T.red : T.ivory }}>{vencidas.length}</div>
+<div style={{ fontSize: 11, color: T.ivoryMuted }}>vencidas sin pagar</div>
+</div>
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 130, textAlign: "center" }}>
+<div style={{ fontSize: 14, fontWeight: 800 }}>S/ {totalPorCobrarPen.toFixed(2)} + US$ {totalPorCobrarUsd.toFixed(2)}</div>
+<div style={{ fontSize: 11, color: T.ivoryMuted }}>total por cobrar</div>
+</div>
+</div>
+)}
+
+<div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Por cobrar</div>
+{cargando ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando…</div>
+) : pendientes.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay facturas pendientes de cobro. 🎉</div>
+) : (
+<div style={{ marginBottom: 20 }}>
+{pendientes.map((f) => (
+<FilaFactura key={f.id} f={f} onMarcarPagado={marcarPagado} onReintentar={reintentar} />
+))}
+</div>
+)}
+
+{!cargando && pagadas.length > 0 && (
+<div>
+<button onClick={() => setVerPagadas(!verPagadas)} style={{
+background: "transparent", border: "none", color: T.ivoryMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, marginBottom: 10,
+}}>
+{verPagadas ? "▾" : "▸"} Pagadas ({pagadas.length})
+</button>
+{verPagadas && pagadas.map((f) => (
+<FilaFactura key={f.id} f={f} onMarcarPagado={marcarPagado} onReintentar={reintentar} />
+))}
+</div>
+)}
+</div>
+</div>
+);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<FacturasServicios />);
+</script>
+</body>
+</html>
