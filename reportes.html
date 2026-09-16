@@ -38,6 +38,14 @@ const T = {
   green: "#6B8F71", red: "#A83E32", amber: "#B8873B",
 };
 
+const SESION_KEY = "ms_staff_sesion";
+function cargarSesion() {
+  try {
+    const raw = localStorage.getItem(SESION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 
 const MESES = [
@@ -657,7 +665,28 @@ function ReportesMensual() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+function AppGate() {
+  const sesion = cargarSesion();
+  if (!sesion) {
+    return (
+      <div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 14 }}>Primero debes iniciar sesión.</div>
+        <a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Ir al panel principal</a>
+      </div>
+    );
+  }
+  if (!sesion.es_administrador) {
+    return (
+      <div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 14 }}>No tienes permiso para ver esta pantalla.</div>
+        <a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Volver al panel</a>
+      </div>
+    );
+  }
+  return <App />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
 </script>
 </body>
 </html>
