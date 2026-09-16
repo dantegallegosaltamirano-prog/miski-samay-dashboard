@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Cargar consumos</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const T = {
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E",
+green: "#6B8F71", amber: "#B8873B",
+};
+
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const REFRESH_MS = 30000;
+
+function iniciales(nombreCompleto = "") {
+const partes = nombreCompleto.trim().split(/\s+/);
+if (!partes[0]) return "?";
+return (partes[0][0] + (partes[1]?.[0] || "")).toUpperCase();
+}
+
+async function apiGet(path) {
+const r = await fetch(`${API_BASE_URL}${path}`);
+return r.json();
+}
+
+function normalizar(texto) {
+return String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+function PantallaConsumos() {
+const [alojados, setAlojados] = useState([]);
+const [cargando, setCargando] = useState(true);
+const [busqueda, setBusqueda] = useState("");
+
+const cargarTodo = useCallback(async () => {
+try {
+const data = await apiGet("/api/domos/estado-hoy");
+setAlojados(Array.isArray(data) ? data : []);
+} catch (err) {
+console.error(err);
+} finally {
+setCargando(false);
+}
+}, []);
+
+useEffect(() => {
+cargarTodo();
+const intervalo = setInterval(cargarTodo, REFRESH_MS);
+return () => clearInterval(intervalo);
+}, [cargarTodo]);
+
+const filtrados = busqueda
+? alojados.filter((h) => normalizar(h.nombre_completo).includes(normalizar(busqueda)) || normalizar(h.codigo).includes(normalizar(busqueda)))
+: alojados;
+
+return (
+<div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: "24px 28px" }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+<div>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
+<div style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>Cargar consumos</div>
+<div style={{ color: T.ivoryMuted, fontSize: 12.5, marginTop: 2 }}>Elige a quién le vas a cargar un consumo o un desayuno.</div>
+</div>
+<div style={{
+background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, color: T.green,
+borderRadius: 12, padding: "10px 18px", fontSize: 15, fontWeight: 700,
+}}>
+{alojados.length} alojados
+</div>
+</div>
+
+<input
+value={busqueda}
+onChange={(e) => setBusqueda(e.target.value)}
+placeholder='Buscar por nombre o domo... (ej: "mara")'
+style={{
+width: "100%", maxWidth: 420, background: T.card, color: T.ivory, border: `1px solid ${T.cardBorder}`,
+borderRadius: 10, padding: "10px 14px", fontSize: 13.5, marginBottom: 20,
+}}
+/>
+
+{cargando ? (
+<div style={{ color: T.ivoryMuted, fontSize: 14 }}>Cargando huéspedes alojados...</div>
+) : alojados.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 15, textAlign: "center", padding: "60px 0", border: `1px dashed ${T.cardBorder}`, borderRadius: 16 }}>
+Nadie alojado en este momento.
+</div>
+) : filtrados.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 15, textAlign: "center", padding: "60px 0", border: `1px dashed ${T.cardBorder}`, borderRadius: 16 }}>
+No se encontró ningún alojado con "{busqueda}".
+</div>
+) : (
+<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+{filtrados.map((h) => {
+const hoyStr = new Date().toISOString().slice(0, 10);
+const salidaStr = h.fecha_salida ? String(h.fecha_salida).slice(0, 10) : null;
+const atrasado = salidaStr && salidaStr < hoyStr;
+return (
+<div key={h.reserva_id} style={{ background: T.card, border: `1px solid ${atrasado ? T.amber : T.cardBorder}`, borderRadius: 16, padding: 18 }}>
+<div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+<div style={{
+background: "rgba(201,162,75,0.14)", color: T.gold, border: "1px solid rgba(201,162,75,0.3)",
+width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center",
+fontSize: 13, fontWeight: 700, flexShrink: 0,
+}}>
+{iniciales(h.nombre_completo)}
+</div>
+<div style={{ minWidth: 0, flex: 1 }}>
+<div style={{ fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.nombre_completo}</div>
+<div style={{ color: T.ivoryMuted, fontSize: 12 }}>
+Domo {h.codigo}{h.canal_origen ? ` · ${h.canal_origen}` : ""}{salidaStr ? ` · sale ${salidaStr}` : ""}
+{atrasado && <span style={{ color: T.amber, fontWeight: 600 }}> · atrasado</span>}
+</div>
+</div>
+</div>
+<div style={{ display: "flex", gap: 8 }}>
+<a href={`consumo.html?id=${h.reserva_id}&tab=desayuno`} style={{
+flex: 1, textAlign: "center", padding: "10px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+border: `1px solid ${T.cardBorder}`, color: T.ivory, textDecoration: "none",
+}}>
+🍳 Desayuno
+</a>
+<a href={`consumo.html?id=${h.reserva_id}`} style={{
+flex: 1, textAlign: "center", padding: "10px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+background: T.gold, color: T.bg, textDecoration: "none",
+}}>
+🍽️ Cargar consumo
+</a>
+</div>
+</div>
+);
+})}
+</div>
+)}
+</div>
+);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PantallaConsumos />);
+</script>
+</body>
+</html>
