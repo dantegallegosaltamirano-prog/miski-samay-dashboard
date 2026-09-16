@@ -35,26 +35,32 @@ const REFRESH_MS = 30000;
 const SESION_KEY = "ms_staff_sesion";
 
 function navItems(sesion) {
-const items = [
+// Los 6 ítems operativos van siempre visibles, en este orden exacto
+// (pedido de Dante, 12 set). "Dashboard" no cuenta como una de esas
+// carpetas — es la página en la que ya estás parado.
+const core = [
 { icon: "▦", label: "Dashboard", active: true },
 { icon: "→", label: "Check-in", href: "llegadas.html" },
+{ icon: "🍽️", label: "Cargar consumos", href: "consumos.html" },
 { icon: "←", label: "Check-out", href: "checkout.html" },
-{ icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
-{ icon: "☺", label: "Huéspedes" },
-{ icon: "●", label: "Domos" },
+{ icon: "📋", label: "Procesar comprobantes", href: "control.html" },
 { icon: "◈", label: "Actividad en Vivo", href: "actividad.html" },
-{ icon: "▤", label: "Reportes", href: "reportes.html" },
-{ icon: "⚙", label: "Configuración" },
+{ icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
 ];
-if (sesion && sesion.puede_editar_menu) {
-items.splice(items.length - 1, 0, { icon: "🍽", label: "Menú", href: "menu.html" });
+// Todo lo demás vive dentro de la carpeta "Administrador", visible
+// solo para quien tenga es_administrador=true (pensado para que solo
+// Dante y Yanet la vean — se activa desde Personal).
+const admin = [];
+if (sesion && sesion.es_administrador) {
+admin.push({ icon: "☺", label: "Huéspedes" });
+admin.push({ icon: "●", label: "Domos" });
+admin.push({ icon: "▤", label: "Reportes", href: "reportes.html" });
+admin.push({ icon: "📖", label: "Menú", href: "menu.html" });
+admin.push({ icon: "👥", label: "Personal", href: "personal.html" });
+admin.push({ icon: "🚐", label: "Facturación de servicios", href: "facturas-servicios.html" });
+admin.push({ icon: "⚙", label: "Configuración" });
 }
-if (sesion && sesion.puede_gestionar_personal) {
-items.splice(items.length - 1, 0, { icon: "👥", label: "Personal", href: "personal.html" });
-items.splice(items.length - 1, 0, { icon: "📋", label: "Control de reservas", href: "control.html" });
-items.splice(items.length - 1, 0, { icon: "🚐", label: "Facturación de servicios", href: "facturas-servicios.html" });
-}
-return items;
+return { core, admin };
 }
 
 const ICONO_POR_CATEGORIA = {
@@ -253,6 +259,8 @@ const [diaSeleccionado, setDiaSeleccionado] = useState(0);
 const [limpieza, setLimpieza] = useState([]);
 const [staffHousekeeping, setStaffHousekeeping] = useState([]);
 const [asignando, setAsignando] = useState({});
+const [adminAbierto, setAdminAbierto] = useState(false);
+const navItemsData = navItems(sesion);
 
 const cargarTodo = useCallback(async () => {
 try {
@@ -327,25 +335,30 @@ return (
 </div>
 </div>
 <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-{navItems(sesion).map((item) => {
-const construido = item.active || !!item.href;
-return (
-<div key={item.label} onClick={() => { if (item.href) window.location.href = item.href; }} style={{
-background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
-color: item.active ? T.gold : (construido ? T.ivoryMuted : "#5C5850"),
-border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
-display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 12, fontSize: 13.5,
-cursor: item.href ? "pointer" : "default",
+{navItemsData.core.map((item) => (
+<ItemNav key={item.label} item={item} />
+))}
+{navItemsData.admin.length > 0 && (
+<React.Fragment>
+<div onClick={() => setAdminAbierto((v) => !v)} style={{
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+padding: "10px 12px", borderRadius: 12, fontSize: 13.5, marginTop: 10, cursor: "pointer",
+color: T.ivoryMuted,
 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-<span style={{ width: 16, textAlign: "center", opacity: construido ? 1 : 0.5 }}>{item.icon}</span>{item.label}
+<span style={{ width: 16, textAlign: "center" }}>📁</span>Administrador
 </div>
-{!construido && (
-<span style={{ fontSize: 9, color: "#5C5850", border: "1px solid #2A2730", borderRadius: 999, padding: "2px 7px", letterSpacing: 0.3 }}>Próximamente</span>
+<span style={{ fontSize: 11, transform: adminAbierto ? "rotate(90deg)" : "none" }}>›</span>
+</div>
+{adminAbierto && (
+<div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: `1px solid ${T.cardBorder}`, marginLeft: 14 }}>
+{navItemsData.admin.map((item) => (
+<ItemNav key={item.label} item={item} />
+))}
+</div>
 )}
-</div>
-);
-})}
+</React.Fragment>
+)}
 </nav>
 </div>
 <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
@@ -605,6 +618,26 @@ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, paddi
 );
 }
 
+function ItemNav({ item }) {
+const construido = item.active || !!item.href;
+return (
+<div onClick={() => { if (item.href) window.location.href = item.href; }} style={{
+background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
+color: item.active ? T.gold : (construido ? T.ivoryMuted : "#5C5850"),
+border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
+display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 12, fontSize: 13.5,
+cursor: item.href ? "pointer" : "default",
+}}>
+<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+<span style={{ width: 16, textAlign: "center", opacity: construido ? 1 : 0.5 }}>{item.icon}</span>{item.label}
+</div>
+{!construido && (
+<span style={{ fontSize: 9, color: "#5C5850", border: "1px solid #2A2730", borderRadius: 999, padding: "2px 7px", letterSpacing: 0.3 }}>Próximamente</span>
+)}
+</div>
+);
+}
+
 function KpiCard({ label, value, accent }) {
 return (
 <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 20 }}>
@@ -629,6 +662,27 @@ return <div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, c
 
 function AppGate() {
 const [sesion, setSesion] = useState(() => cargarSesion());
+
+useEffect(() => {
+if (!sesion) return;
+// Refresca los permisos contra el servidor cada vez que se abre el
+// panel. La sesión queda guardada en este dispositivo (localStorage)
+// y nunca se actualiza sola — si a esta persona le cambian un
+// permiso (ej: ahora puede emitir comprobantes, o ahora es
+// administrador) desde otro equipo, este dispositivo se quedaría con
+// el permiso viejo para siempre si no volviera a preguntarle al
+// servidor. Esto evita tener que cerrar sesión y volver a entrar
+// manualmente cada vez que cambia un permiso.
+apiGet(`/api/staff/${sesion.id}/sesion`)
+.then((fresca) => {
+const actualizada = { ...sesion, ...fresca };
+guardarSesion(actualizada);
+setSesion(actualizada);
+})
+.catch(() => {}); // sin conexión momentánea: seguimos con lo que ya había guardado
+// eslint-disable-next-line
+}, [sesion?.id]);
+
 if (!sesion) {
 return <LoginScreen onLogin={setSesion} />;
 }
