@@ -51,7 +51,7 @@ const core = [
 // solo para quien tenga es_administrador=true (pensado para que solo
 // Dante y Yanet la vean — se activa desde Personal).
 const admin = [];
-if (sesion && sesion.es_administrador) {
+if (sesion && (sesion.es_administrador || sesion.puede_gestionar_personal)) {
 admin.push({ icon: "☺", label: "Huéspedes" });
 admin.push({ icon: "●", label: "Domos" });
 admin.push({ icon: "▤", label: "Reportes", href: "reportes.html" });
