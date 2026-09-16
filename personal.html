@@ -75,6 +75,7 @@ const [haceHousekeeping, setHaceHousekeeping] = useState(!!persona?.hace_houseke
 const [puedeEditarMenu, setPuedeEditarMenu] = useState(!!persona?.puede_editar_menu);
 const [puedeGestionarPersonal, setPuedeGestionarPersonal] = useState(!!persona?.puede_gestionar_personal);
 const [puedeEmitirComprobantes, setPuedeEmitirComprobantes] = useState(!!persona?.puede_emitir_comprobantes);
+const [esAdministrador, setEsAdministrador] = useState(!!persona?.es_administrador);
 const [activo, setActivo] = useState(persona?.activo != null ? persona.activo : true);
 const [guardando, setGuardando] = useState(false);
 const [error, setError] = useState(null);
@@ -95,6 +96,7 @@ nombre: nombre.trim(), rol: rolFinal, telefono: telefono.trim() || null,
 hace_housekeeping: haceHousekeeping, pin,
 puede_editar_menu: puedeEditarMenu, puede_gestionar_personal: puedeGestionarPersonal,
 puede_emitir_comprobantes: puedeEmitirComprobantes,
+es_administrador: esAdministrador,
 };
 if (esEdicion) {
 await apiPut(`/api/staff/${persona.id}`, { ...payload, activo });
@@ -183,7 +185,11 @@ Puede agregar/retirar personal (como esta pantalla)
 <input type="checkbox" checked={puedeEmitirComprobantes} onChange={(e) => setPuedeEmitirComprobantes(e.target.checked)} />
 Puede emitir boletas/facturas ante SUNAT (check-out y Corregir un pago anterior)
 </label>
-{esEdicion && persona.id === sesion.id && puedeGestionarPersonal === false && (
+<label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+<input type="checkbox" checked={esAdministrador} onChange={(e) => setEsAdministrador(e.target.checked)} />
+Administrador — ve la carpeta "Administrador" del menú (Huéspedes, Domos, Reportes, Menú, Personal, Facturación de servicios, Configuración)
+</label>
+{esEdicion && persona.id === sesion.id && puedeGestionarPersonal === false && esAdministrador === false && (
 <div style={{ fontSize: 11.5, color: "#E8B4AC" }}>
 ⚠ Te estás quitando este permiso a ti mismo — no podrás volver a entrar aquí hasta que otra persona con acceso te lo reactive.
 </div>
@@ -233,6 +239,7 @@ opacity: persona.activo ? 1 : 0.55,
 {persona.puede_editar_menu && <span>· 🍽 Menú</span>}
 {persona.puede_gestionar_personal && <span>· 👥 Personal</span>}
 {persona.puede_emitir_comprobantes && <span>· 🧾 SUNAT</span>}
+{persona.es_administrador && <span>· 🔑 Administrador</span>}
 </div>
 </div>
 <div style={{ fontSize: 13, color: T.gold, fontFamily: "monospace", letterSpacing: 1, flexShrink: 0 }}>{persona.pin}</div>
@@ -345,7 +352,7 @@ return (
 </div>
 );
 }
-if (!sesion.puede_gestionar_personal) {
+if (!sesion.puede_gestionar_personal && !sesion.es_administrador) {
 return (
 <div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
 <div style={{ fontSize: 14 }}>No tienes permiso para gestionar personal.</div>
