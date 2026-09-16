@@ -48,6 +48,31 @@ function cargarSesion() {
   } catch { return null; }
 }
 
+// La sesión guardada en este dispositivo (localStorage) nunca se
+// actualiza sola: si a esta persona le cambian un permiso (ej: ahora
+// puede emitir comprobantes) desde otro equipo, este celular/tablet se
+// queda con el permiso viejo hasta que vuelva a preguntarle al
+// servidor. Este hook refresca los permisos contra el servidor al
+// entrar a la pantalla, para que eso se autocorrija sin tener que
+// cerrar sesión y volver a entrar manualmente.
+function useSesionFresca() {
+  const [sesion, setSesion] = useState(() => cargarSesion());
+  useEffect(() => {
+    if (!sesion) return;
+    fetch(`${API_BASE_URL}/api/staff/${sesion.id}/sesion`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((fresca) => {
+        if (!fresca) return;
+        const actualizada = { ...sesion, ...fresca };
+        localStorage.setItem(SESION_KEY, JSON.stringify(actualizada));
+        setSesion(actualizada);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line
+  }, [sesion?.id]);
+  return sesion;
+}
+
 // Métodos disponibles para una línea completa (incluye "mixto")
 const METODOS = [
   { valor: "efectivo", label: "Efectivo" },
@@ -394,8 +419,8 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
 }
 
 function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigoInicial } = {}) {
-  const sesion = cargarSesion();
-  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
+  const sesion = useSesionFresca();
+  const puedeEmitir = !!(sesion && (sesion.puede_emitir_comprobantes || sesion.es_administrador));
   const [query, setQuery] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [resultados, setResultados] = useState([]);
@@ -1374,8 +1399,8 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
 }
 
 function CheckoutPantalla() {
-  const sesion = cargarSesion();
-  const puedeEmitir = !!(sesion && sesion.puede_emitir_comprobantes);
+  const sesion = useSesionFresca();
+  const puedeEmitir = !!(sesion && (sesion.puede_emitir_comprobantes || sesion.es_administrador));
   const [modo, setModo] = useState(corregirIdParam ? "corregir" : "checkout"); // "checkout" | "corregir"
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
