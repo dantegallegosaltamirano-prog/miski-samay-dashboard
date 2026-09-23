@@ -114,11 +114,12 @@ function CeldaComprobantes({ comprobantes }) {
 }
 
 function descargarCSV(anio, mes, reservas) {
-  const encabezado = ["Huésped", "Domo", "Canal", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
+  const encabezado = ["Huésped", "Domo", "Canal", "Referido por", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
   const filas = reservas.map((r) => [
     r.nombre_completo || "Por confirmar",
     r.domo_codigo || "Sin domo",
     r.canal_origen || "",
+    r.referido_por || "",
     r.fecha_llegada,
     r.fecha_salida,
     r.checkin_hecho ? "Sí" : "No",
@@ -163,6 +164,7 @@ function descargarHTML(anio, mes, reservas) {
       <td>${escaparHtml(r.nombre_completo || "Por confirmar")}</td>
       <td>${escaparHtml(r.domo_codigo || "—")}</td>
       <td>${escaparHtml(r.canal_origen || "—")}</td>
+      <td>${escaparHtml(r.referido_por || "—")}</td>
       <td>${escaparHtml(r.fecha_llegada)}</td>
       <td>${escaparHtml(r.fecha_salida)}</td>
       <td style="text-align:center">${r.checkin_hecho ? "✅" : "—"}</td>
@@ -187,7 +189,7 @@ function descargarHTML(anio, mes, reservas) {
 <p>Generado el ${new Date().toLocaleDateString("es-PE")} desde el panel operativo.</p>
 <table>
 <thead><tr>
-<th>Huésped</th><th>Domo</th><th>Canal</th><th>Llegada</th><th>Salida</th>
+<th>Huésped</th><th>Domo</th><th>Canal</th><th>Referido por</th><th>Llegada</th><th>Salida</th>
 <th>Check-in</th><th>Check-out</th><th>Consumos</th><th>Comprobante(s)</th>
 </tr></thead>
 <tbody>${filasHtml}</tbody>
@@ -472,6 +474,167 @@ function ReporteComprobantes() {
   );
 }
 
+function nochesEntre(desde, hasta) {
+  const a = new Date(String(desde).slice(0, 10) + "T00:00:00");
+  const b = new Date(String(hasta).slice(0, 10) + "T00:00:00");
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
+  return Math.max(0, Math.round((b - a) / (1000 * 60 * 60 * 24)));
+}
+
+function descargarCSVReferidos(anio, mes, grupos) {
+  const encabezado = ["Referido por", "Huésped", "Domo", "Llegada", "Salida", "Noches"];
+  const filas = [];
+  grupos.forEach((g) => {
+    g.reservas.forEach((r) => {
+      filas.push([g.nombre, r.nombre_completo || "Por confirmar", r.domo_codigo || "—", r.fecha_llegada, r.fecha_salida, nochesEntre(r.fecha_llegada, r.fecha_salida)]);
+    });
+  });
+  const escapar = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [encabezado, ...filas].map((fila) => fila.map(escapar).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comisiones_referidos_${anio}_${String(mes).padStart(2, "0")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ReporteReferidos() {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [reservas, setReservas] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  function cargar() {
+    setCargando(true);
+    setError(null);
+    fetch(`${API_BASE_URL}/api/reportes/mensual?anio=${anio}&mes=${mes}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { setError(data.error); setCargando(false); return; }
+        setReservas(data.reservas || []);
+        setCargando(false);
+      })
+      .catch(() => { setError("No se pudo cargar el reporte"); setCargando(false); });
+  }
+  useEffect(cargar, [anio, mes]);
+
+  // Solo nos importan las reservas de canal Directo que sí tienen quién
+  // las refirió — el resto (Booking.com, Airbnb, sin check-in aún, etc.)
+  // no entra a esta vista porque no genera comisión.
+  const directasConReferido = (reservas || []).filter((r) => r.canal_origen === "Directo" && r.referido_por);
+
+  const grupos = React.useMemo(() => {
+    const mapa = new Map();
+    directasConReferido.forEach((r) => {
+      if (!mapa.has(r.referido_por)) mapa.set(r.referido_por, []);
+      mapa.get(r.referido_por).push(r);
+    });
+    return Array.from(mapa.entries())
+      .map(([nombre, lista]) => ({
+        nombre,
+        reservas: lista,
+        totalHuespedes: lista.length,
+        totalNoches: lista.reduce((s, r) => s + nochesEntre(r.fecha_llegada, r.fecha_salida), 0),
+      }))
+      .sort((a, b) => b.totalHuespedes - a.totalHuespedes);
+  }, [reservas]);
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>🤝 Comisiones por referido</div>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+              Reservas de canal Directo, agrupadas por quién las envió (Saúl, Trotamundos, Amath Perú, página web, Google search, u otro) —
+              para saber a cuántos huéspedes y qué fechas le corresponde pagar comisión a cada uno.
+            </div>
+          </div>
+          <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+        </div>
+
+        <div className="no-imprimir" style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Año</div>
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}>
+              {[hoy.getFullYear() - 1, hoy.getFullYear(), hoy.getFullYear() + 1].map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 4 }}>Mes</div>
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}
+              style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 12px", fontSize: 13.5 }}>
+              {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={() => grupos.length > 0 && descargarCSVReferidos(anio, mes, grupos)}
+            disabled={grupos.length === 0}
+            style={{
+              background: grupos.length > 0 ? T.gold : T.cardBorder,
+              color: grupos.length > 0 ? "#1C1A20" : T.ivoryMuted,
+              border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
+              cursor: grupos.length > 0 ? "pointer" : "not-allowed",
+            }}
+          >
+            ⬇ Descargar CSV
+          </button>
+        </div>
+
+        {cargando && <div style={{ color: T.ivoryMuted }}>Cargando…</div>}
+        {error && <div style={{ color: T.red }}>⚠️ {error}</div>}
+
+        {!cargando && !error && grupos.length === 0 && (
+          <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30, border: `1px dashed ${T.cardBorder}`, borderRadius: 14 }}>
+            No hay reservas Directo con "quién refirió" registrado para {MESES[mes - 1]} {anio}.
+          </div>
+        )}
+
+        {!cargando && grupos.map((g) => (
+          <div key={g.nombre} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.gold }}>{g.nombre}</div>
+              <div style={{ display: "flex", gap: 14, fontSize: 12.5, color: T.ivoryMuted }}>
+                <span>{g.totalHuespedes} huésped{g.totalHuespedes === 1 ? "" : "es"}</span>
+                <span>{g.totalNoches} noche{g.totalNoches === 1 ? "" : "s"} en total</span>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                  <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Huésped</th>
+                  <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Domo</th>
+                  <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Llegada</th>
+                  <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Salida</th>
+                  <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "right" }}>Noches</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.reservas.map((r) => (
+                  <tr key={r.reserva_id} style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
+                    <td style={{ fontSize: 12.5, fontWeight: 600 }}>{r.nombre_completo || "Por confirmar"}</td>
+                    <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.domo_codigo || "—"}</td>
+                    <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_llegada)}</td>
+                    <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_salida)}</td>
+                    <td style={{ fontSize: 12.5, textAlign: "right" }}>{nochesEntre(r.fecha_llegada, r.fecha_salida)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function tabEstilo(activo) {
   return {
     background: activo ? T.gold : "transparent",
@@ -493,9 +656,10 @@ function App() {
         <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", gap: 8, padding: "0 24px" }}>
           <button onClick={() => setTab("mensual")} style={tabEstilo(tab === "mensual")}>▤ Reporte mensual</button>
           <button onClick={() => setTab("comprobantes")} style={tabEstilo(tab === "comprobantes")}>🧾 Comprobantes emitidos (contador)</button>
+          <button onClick={() => setTab("referidos")} style={tabEstilo(tab === "referidos")}>🤝 Comisiones por referido</button>
         </div>
       </div>
-      {tab === "mensual" ? <ReportesMensual /> : <ReporteComprobantes />}
+      {tab === "mensual" ? <ReportesMensual /> : tab === "comprobantes" ? <ReporteComprobantes /> : <ReporteReferidos />}
     </div>
   );
 }
@@ -632,6 +796,7 @@ function ReportesMensual() {
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Huésped</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Domo</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Canal</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Referido por</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Llegada</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Salida</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "center" }}>Check-in</th>
@@ -646,6 +811,7 @@ function ReportesMensual() {
                         <td style={{ fontSize: 12.5, fontWeight: 600 }}>{r.nombre_completo || "Por confirmar"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.domo_codigo || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.canal_origen || "—"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.referido_por || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_llegada)}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_salida)}</td>
                         <td style={{ textAlign: "center" }}><Check ok={r.checkin_hecho} /></td>
