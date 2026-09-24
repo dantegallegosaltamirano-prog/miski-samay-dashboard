@@ -127,12 +127,37 @@ if (Array.isArray(data)) setDomosOcupados(data.map(d => d.codigo));
 React.useEffect(() => {
 if (reserva) {
 setCanal(reserva.canal);
-setNoches(reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "" })));
+setNoches(reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "", comision: "" })));
 if (reserva.huespedNombre && reserva.huespedNombre !== "Por confirmar en check-in") {
 setNombre(reserva.huespedNombre);
 }
 }
 }, [reserva]);
+
+// Solo Booking.com reporta impuesto/servicio por separado (10% + 10% de
+// la tarifa base, según pidió Dante 23 set) — Expedia, Airbnb, Lima Tours,
+// HyperGuest y Directo no los desglosan, así que esas columnas se ocultan
+// para esos canales (evita confundir con ceros que no significan nada).
+// La columna Comisión sí aplica a todos: para los canales de OTA queda
+// vacía por ahora (a completar a mano hasta que se conecte el API de
+// Aloha, que la traerá sola); para Directo, Dante la llena él mismo con
+// lo que le paga a quien refirió la reserva.
+const mostrarImpuestoServicio = canal === "Booking.com";
+
+// Si cambian a un canal que no desglosa impuesto/servicio, limpiamos esos
+// campos (aunque queden ocultos en la tabla, seguían sumando al total si
+// no se borran). Si cambian A Booking.com y ya hay una tarifa base
+// cargada, la rellenamos con el 10%/10% de una vez.
+React.useEffect(() => {
+setNoches((prev) => prev.map((n) => {
+if (canal === "Booking.com") {
+const base = Number(n.base) || 0;
+return { ...n, impuesto: base > 0 ? (base * 0.10).toFixed(2) : n.impuesto, servicio: base > 0 ? (base * 0.10).toFixed(2) : n.servicio };
+}
+return { ...n, impuesto: "", servicio: "" };
+}));
+// eslint-disable-next-line
+}, [canal]);
 
 const [pais, setPais] = useState("");
 const [celular, setCelular] = useState("");
@@ -142,6 +167,15 @@ const [adelantoPagado, setAdelantoPagado] = useState("");
 function actualizarNoche(i, campo, valor) {
 const copia = [...noches];
 copia[i] = { ...copia[i], [campo]: valor };
+// Booking.com: al cambiar la tarifa base, recalculamos impuesto y
+// servicio como 10%/10% de esa base automáticamente (pedido de Dante,
+// 23 set) — queda editable después por si el monto real de Aloha
+// difiere un poco del 10% parejo.
+if (campo === "base" && mostrarImpuestoServicio) {
+const base = Number(valor) || 0;
+copia[i].impuesto = base > 0 ? (base * 0.10).toFixed(2) : "";
+copia[i].servicio = base > 0 ? (base * 0.10).toFixed(2) : "";
+}
 setNoches(copia);
 }
 
@@ -149,14 +183,20 @@ function totalNoche(n) {
 return (Number(n.base) || 0) + (Number(n.impuesto) || 0) + (Number(n.servicio) || 0);
 }
 
+function netoNoche(n) {
+return totalNoche(n) - (Number(n.comision) || 0);
+}
+
 const totales = useMemo(() => {
 const base = noches.reduce((s, n) => s + (Number(n.base) || 0), 0);
 const impuesto = noches.reduce((s, n) => s + (Number(n.impuesto) || 0), 0);
 const servicio = noches.reduce((s, n) => s + (Number(n.servicio) || 0), 0);
+const comision = noches.reduce((s, n) => s + (Number(n.comision) || 0), 0);
 const totalUsd = base + impuesto + servicio;
+const netoHotel = totalUsd - comision;
 const saldoPendienteUsd = totalUsd - (Number(adelantoPagado) || 0);
 const totalSoles = saldoPendienteUsd * (Number(tipoCambio) || 0);
-return { base, impuesto, servicio, totalUsd, totalSoles, saldoPendienteUsd };
+return { base, impuesto, servicio, comision, totalUsd, netoHotel, totalSoles, saldoPendienteUsd };
 }, [noches, tipoCambio, adelantoPagado]);
 
 function esFinDeSemana(fechaStr) {
@@ -204,6 +244,10 @@ celular: celular,
 correo: correo,
 canalOrigen: canal,
 referidoPor: referidoPorEnviar,
+montoImpuesto: totales.impuesto,
+montoServicio: totales.servicio,
+montoComision: totales.comision,
+montoNetoHotel: totales.netoHotel,
 adelantoPagado: adelantoPagado || 0
 })
 })
@@ -318,9 +362,11 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 <tr style={{ color: T.ivoryMuted, fontSize: 11 }}>
 <td style={{ padding: "0 6px 6px 0" }}>Noche</td>
 <td style={{ padding: "0 6px 6px" }}>Base US$</td>
-<td style={{ padding: "0 6px 6px" }}>Impuesto</td>
-<td style={{ padding: "0 6px 6px" }}>Servicio</td>
-<td style={{ padding: "0 0 6px 6px", textAlign: "right" }}>Total US$</td>
+{mostrarImpuestoServicio && <td style={{ padding: "0 6px 6px" }}>Impuesto</td>}
+{mostrarImpuestoServicio && <td style={{ padding: "0 6px 6px" }}>Servicio</td>}
+<td style={{ padding: "0 6px 6px", textAlign: "right" }}>Total US$</td>
+<td style={{ padding: "0 6px 6px" }}>Comisión</td>
+<td style={{ padding: "0 0 6px 6px", textAlign: "right" }}>Neto hotel</td>
 </tr>
 </thead>
 <tbody>
@@ -331,20 +377,29 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 <span style={{ fontSize: 10.5, color: esFinDeSemana(n.fecha) ? T.gold : T.ivoryMuted }}>{esFinDeSemana(n.fecha) ? "fin de semana" : "regular"}</span>
 </td>
 <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.base} onChange={(e) => actualizarNoche(i, "base", e.target.value)} /></td>
-<td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.impuesto} onChange={(e) => actualizarNoche(i, "impuesto", e.target.value)} /></td>
-<td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.servicio} onChange={(e) => actualizarNoche(i, "servicio", e.target.value)} /></td>
-<td style={{ padding: "6px 0 6px 6px", textAlign: "right", fontWeight: 600 }}>US$ {fmt(totalNoche(n))}</td>
+{mostrarImpuestoServicio && <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.impuesto} onChange={(e) => actualizarNoche(i, "impuesto", e.target.value)} /></td>}
+{mostrarImpuestoServicio && <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.servicio} onChange={(e) => actualizarNoche(i, "servicio", e.target.value)} /></td>}
+<td style={{ padding: "6px", textAlign: "right", fontWeight: 600 }}>US$ {fmt(totalNoche(n))}</td>
+<td style={{ padding: 6 }}><input style={inputStyle} placeholder="—" value={n.comision} onChange={(e) => actualizarNoche(i, "comision", e.target.value)} /></td>
+<td style={{ padding: "6px 0 6px 6px", textAlign: "right", fontWeight: 600, color: T.green }}>US$ {fmt(netoNoche(n))}</td>
 </tr>
 ))}
 <tr style={{ borderTop: `1px solid ${T.ivoryMuted}` }}>
 <td style={{ padding: "8px 6px 0 0", fontWeight: 600 }}>Total estadía</td>
 <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.base)}</td>
-<td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.impuesto)}</td>
-<td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.servicio)}</td>
-<td style={{ padding: "8px 0 0 6px", textAlign: "right", fontWeight: 600, fontSize: 15 }}>US$ {fmt(totales.totalUsd)}</td>
+{mostrarImpuestoServicio && <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.impuesto)}</td>}
+{mostrarImpuestoServicio && <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.servicio)}</td>}
+<td style={{ padding: "8px 6px 0", textAlign: "right", fontWeight: 600, fontSize: 15 }}>US$ {fmt(totales.totalUsd)}</td>
+<td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.comision)}</td>
+<td style={{ padding: "8px 0 0 6px", textAlign: "right", fontWeight: 600, fontSize: 15, color: T.green }}>US$ {fmt(totales.netoHotel)}</td>
 </tr>
 </tbody>
 </table>
+<div style={{ fontSize: 10.5, color: T.ivoryMuted, marginTop: 6 }}>
+{canal === "Directo"
+? "Comisión: escribe lo que le corresponde a quien refirió esta reserva."
+: "Comisión: por ahora se llena a mano si ya la conoces — más adelante se completará sola con el API de Aloha."}
+</div>
 
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 10 }}>
 <span style={{ ...labelMuted, whiteSpace: "nowrap" }}>Adelanto pagado (US$)</span>
