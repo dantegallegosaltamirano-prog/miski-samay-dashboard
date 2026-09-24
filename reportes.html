@@ -114,12 +114,16 @@ function CeldaComprobantes({ comprobantes }) {
 }
 
 function descargarCSV(anio, mes, reservas) {
-  const encabezado = ["Huésped", "Domo", "Canal", "Referido por", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
+  const encabezado = ["Huésped", "Domo", "Canal", "Referido por", "Impuesto US$", "Servicio US$", "Comisión US$", "Neto hotel US$", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
   const filas = reservas.map((r) => [
     r.nombre_completo || "Por confirmar",
     r.domo_codigo || "Sin domo",
     r.canal_origen || "",
     r.referido_por || "",
+    r.monto_impuesto != null ? Number(r.monto_impuesto).toFixed(2) : "",
+    r.monto_servicio != null ? Number(r.monto_servicio).toFixed(2) : "",
+    r.monto_comision != null ? Number(r.monto_comision).toFixed(2) : "",
+    r.monto_neto_hotel != null ? Number(r.monto_neto_hotel).toFixed(2) : "",
     r.fecha_llegada,
     r.fecha_salida,
     r.checkin_hecho ? "Sí" : "No",
@@ -797,6 +801,7 @@ function ReportesMensual() {
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Domo</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Canal</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Referido por</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comisión / Neto hotel</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Llegada</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Salida</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted, textAlign: "center" }}>Check-in</th>
@@ -812,6 +817,11 @@ function ReportesMensual() {
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.domo_codigo || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.canal_origen || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.referido_por || "—"}</td>
+                        <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>
+                          {r.monto_neto_hotel != null
+                            ? `US$ ${montoFmt(r.monto_comision)} / US$ ${montoFmt(r.monto_neto_hotel)}`
+                            : "—"}
+                        </td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_llegada)}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(r.fecha_salida)}</td>
                         <td style={{ textAlign: "center" }}><Check ok={r.checkin_hecho} /></td>
