@@ -1398,10 +1398,707 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
   );
 }
 
+// ---------------------------------------------------------------
+// CIERRE COMBINADO (24 set, pedido de Dante): cuando una sola persona
+// reservó varios domos y quiere UN solo comprobante con todo el
+// alojamiento + consumo junto, en vez de cerrar cada domo por separado.
+// Reutiliza los mismos componentes de moneda/método/mixto de siempre —
+// la diferencia es que junta el folio de varios domos y, al confirmar,
+// llama a /api/reservas/checkout-combinado en vez de /checkout.
+// ---------------------------------------------------------------
+function descripcionItemCombo(concepto, domo) {
+  if (concepto === "hospedaje") {
+    let noches = null, desdeTexto = null, hastaTexto = null;
+    if (domo.fechaLlegada && domo.fechaSalida) {
+      const desde = new Date(domo.fechaLlegada);
+      const hasta = new Date(domo.fechaSalida);
+      if (!isNaN(desde) && !isNaN(hasta)) {
+        noches = Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
+        const opciones = { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" };
+        desdeTexto = desde.toLocaleDateString("es-PE", opciones);
+        hastaTexto = hasta.toLocaleDateString("es-PE", opciones);
+      }
+    }
+    const textoFechas = desdeTexto && hastaTexto ? ` del ${desdeTexto} al ${hastaTexto}` : "";
+    const textoNoches = noches != null && noches > 0 ? ` — ${noches} noche${noches === 1 ? "" : "s"}` : "";
+    return `Servicio de alojamiento (Domo ${domo.domoCodigo || "?"})${textoFechas}${textoNoches}`;
+  }
+  return `Consumo en restaurante (Domo ${domo.domoCodigo || "?"})`;
+}
+
+// Reparte un total YA REDONDEADO entre varios domos a partir de sus montos
+// sin redondear, dejando que el ÚLTIMO domo absorba el centavo de
+// diferencia — así la suma de las partes siempre cuadra exacto con el
+// total de la línea (el backend exige que desglosePorReserva sume el
+// monto exacto, igual que ya exige con el desglose de pago mixto).
+function repartirRedondeado(valoresBrutos, totalFinal) {
+  const partes = valoresBrutos.map(v => round2(v));
+  if (partes.length > 0) {
+    const sumaSinUltimo = partes.slice(0, -1).reduce((a, b) => a + b, 0);
+    partes[partes.length - 1] = round2(totalFinal - sumaSinUltimo);
+  }
+  return partes;
+}
+
+function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onContinuar }) {
+  const domos = folioCombo.domos;
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Domos incluidos ({domos.length})</div>
+      {domos.map((d) => (
+        <div key={d.reservaId} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{d.domoCodigo || "?"} — {d.nombreCompleto || "Por confirmar"}</div>
+          <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginBottom: 6 }}>
+            Hospedaje: US$ {fmt(d.montoAlojamientoUsd)}
+            {d.adelantoPagado > 0 && <span> · Adelanto ya pagado: US$ {fmt(d.adelantoPagado)}</span>}
+          </div>
+          {d.detalleConsumos.length > 0 && (
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted }}>
+              {d.detalleConsumos.map((c) => (
+                <div key={c.id}>· {c.descripcion} x{c.cantidad}: S/ {fmt(c.subtotal)}</div>
+              ))}
+              <div style={{ marginTop: 4, fontWeight: 600 }}>Consumo: S/ {fmt(d.totalConsumosSoles)}</div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 4 }}>
+          <span>Total hospedaje</span><span style={{ fontWeight: 700 }}>US$ {fmt(folioCombo.montoAlojamientoUsdTotal)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 4 }}>
+          <span>Total consumo</span><span style={{ fontWeight: 700 }}>S/ {fmt(folioCombo.totalConsumosSolesTotal)}</span>
+        </div>
+        {folioCombo.adelantoPagadoTotal > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.green }}>
+            <span>Adelantos ya pagados (suman)</span><span>US$ {fmt(folioCombo.adelantoPagadoTotal)}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>¿A nombre de quién sale la boleta/factura?</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+        {domos.map((d) => (
+          <button key={d.reservaId} onClick={() => onTitularChange(d.reservaId)} style={{
+            textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+            border: titularReservaId === d.reservaId ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+            background: titularReservaId === d.reservaId ? "rgba(201,162,75,0.15)" : T.bg,
+            color: T.ivory, fontSize: 13.5,
+          }}>
+            <strong>{d.domoCodigo}</strong> — {d.nombreCompleto || "Por confirmar"}
+          </button>
+        ))}
+      </div>
+
+      <button onClick={onContinuar} style={{
+        width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10,
+        padding: "14px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer",
+      }}>
+        Continuar →
+      </button>
+    </div>
+  );
+}
+
+function VistaPreviaComprobanteCombo({ items, tipoComprobante, facturaRuc, facturaRazonSocial, fechaEmision, clienteTitular, igvPorcentaje, enviando, errorEnvio, onVolver, onConfirmar }) {
+  const porMoneda = {};
+  items.forEach(it => { (porMoneda[it.moneda] = porMoneda[it.moneda] || []).push(it); });
+
+  return (
+    <div>
+      <button onClick={onVolver} disabled={enviando} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: enviando ? "default" : "pointer", marginBottom: 14, padding: 0 }}>
+        ← Volver a editar
+      </button>
+
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Vista previa del comprobante combinado</div>
+      <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 16 }}>
+        Revisa que los datos estén correctos — al confirmar se emite de inmediato ante SUNAT, no se puede deshacer.
+      </div>
+
+      <div style={{ fontSize: 12.5, marginBottom: 16, padding: "8px 12px", borderRadius: 8, background: fechaEmision ? "rgba(201,162,75,0.10)" : "transparent", border: fechaEmision ? `1px solid ${T.gold}` : "none" }}>
+        <strong>Fecha de emisión:</strong> {fechaEmision || "hoy (fecha actual)"}
+      </div>
+
+      {Object.keys(porMoneda).map((moneda) => {
+        const lineas = porMoneda[moneda];
+        const total = lineas.reduce((a, it) => a + Number(it.monto || 0), 0);
+        const tasaIgv = Number(igvPorcentaje) || 18;
+        const opGravada = total / (1 + tasaIgv / 100);
+        const igv = total - opGravada;
+        const simbolo = moneda === "USD" ? "US$" : "S/.";
+        const esFactura = tipoComprobante === "factura";
+        return (
+          <div key={moneda} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{esFactura ? "FACTURA" : "BOLETA"} · Serie {esFactura ? "F002" : "B002"}</div>
+              <div style={{ fontSize: 11, color: T.ivoryMuted }}>{moneda}</div>
+            </div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>Emisor</div>
+            <div style={{ fontSize: 13, marginBottom: 10 }}>SETUMIS S.R.L. — RUC 20605979034</div>
+            <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 2 }}>Cliente</div>
+            <div style={{ fontSize: 13, marginBottom: 10 }}>
+              {esFactura ? (
+                <React.Fragment>{facturaRazonSocial || "(sin razón social)"} — RUC {facturaRuc || "(sin RUC)"}</React.Fragment>
+              ) : (
+                <React.Fragment>{clienteTitular.nombreCompleto || "(sin nombre)"} — {clienteTitular.tipoDocumento || "Doc."} {clienteTitular.numeroDocumento || "?"}</React.Fragment>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 10 }}>
+              {lineas.map((it, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                  <span style={{ color: T.ivoryMuted }}>{it.descripcion}</span>
+                  <span>{simbolo} {fmt(it.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>(incl. IGV)</span></span>
+                </div>
+              ))}
+            </div>
+            <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 3 }}>
+                <span>Op. gravada</span><span>{simbolo} {fmt(opGravada)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
+                <span>IGV ({tasaIgv}%)</span><span>{simbolo} {fmt(igv)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                <span>Total</span><span style={{ color: T.gold }}>{simbolo} {fmt(total)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {Object.keys(porMoneda).length > 1 && (
+        <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 14 }}>
+          ℹ️ Son 2 comprobantes independientes (uno por moneda) — ambos usan la misma serie ({tipoComprobante === "factura" ? "F002" : "B002"}) porque la serie identifica el TIPO de comprobante, no la moneda.
+        </div>
+      )}
+
+      {errorEnvio && (
+        <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
+          Error: {errorEnvio}
+        </div>
+      )}
+
+      <button onClick={onConfirmar} disabled={enviando} style={{
+        width: "100%", background: enviando ? T.cardBorder : T.gold,
+        color: enviando ? T.ivoryMuted : "#1C1A20", border: "none", borderRadius: 10,
+        padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: enviando ? "not-allowed" : "pointer",
+      }}>
+        {enviando ? "Emitiendo y cerrando cuentas..." : "✓ Confirmar, guardar e imprimir"}
+      </button>
+    </div>
+  );
+}
+
+function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId }) {
+  const [seleccionIds, setSeleccionIds] = useState([]);
+  const [folioCombo, setFolioCombo] = useState(null);
+  const [cargandoFolio, setCargandoFolio] = useState(false);
+  const [errorFolio, setErrorFolio] = useState(null);
+  const [titularReservaId, setTitularReservaId] = useState(null);
+  const [preCuentaVista, setPreCuentaVista] = useState(false);
+
+  const [monedaHospedaje, setMonedaHospedaje] = useState("USD");
+  const [monedaConsumo, setMonedaConsumo] = useState("PEN");
+  const [metodoHospedaje, setMetodoHospedaje] = useState("efectivo");
+  const [metodoConsumo, setMetodoConsumo] = useState("efectivo");
+  const [tipoCambioHospedaje, setTipoCambioHospedaje] = useState(0);
+  const [tipoCambioConsumo, setTipoCambioConsumo] = useState(0);
+  const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+  const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+  // A diferencia del check-out de un solo domo, aquí el adelanto NO se
+  // edita a mano: cada domo ya trae el suyo (registrado en su propio
+  // check-in) — solo se elige a qué concepto aplicarlo.
+  const [aplicarAdelantoA, setAplicarAdelantoA] = useState("hospedaje");
+
+  const [tipoComprobante, setTipoComprobante] = useState("boleta");
+  const [facturaRuc, setFacturaRuc] = useState("");
+  const [facturaRazonSocial, setFacturaRazonSocial] = useState("");
+  const [fechaEmision, setFechaEmision] = useState("");
+  const [vistaPreviaComprobante, setVistaPreviaComprobante] = useState(false);
+
+  const [enviando, setEnviando] = useState(false);
+  const [resultadoOk, setResultadoOk] = useState(null);
+  const [errorEnvio, setErrorEnvio] = useState(null);
+
+  function toggleSeleccion(reservaId) {
+    setSeleccionIds(prev => prev.includes(reservaId) ? prev.filter(id => id !== reservaId) : [...prev, reservaId]);
+  }
+
+  useEffect(() => {
+    if (seleccionIds.length >= 2) {
+      setFolioCombo(null);
+      setErrorFolio(null);
+      setPreCuentaVista(false);
+      setCargandoFolio(true);
+      fetch(`${API_BASE_URL}/api/reservas/folio-combinado?ids=${seleccionIds.join(",")}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) { setErrorFolio(data.error); setCargandoFolio(false); return; }
+          setFolioCombo(data);
+          setTitularReservaId(prev => (prev && seleccionIds.includes(prev)) ? prev : (data.domos[0]?.reservaId || null));
+          const tc = Number(data.tipoCambio) || 0;
+          setTipoCambioHospedaje(tc);
+          setTipoCambioConsumo(tc);
+          setCargandoFolio(false);
+        })
+        .catch(() => { setErrorFolio("No se pudo cargar el folio combinado"); setCargandoFolio(false); });
+    } else {
+      setFolioCombo(null);
+      setErrorFolio(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccionIds.join(",")]);
+
+  const tipoCambioRef = folioCombo?.tipoCambio || null;
+
+  // Cada domo aplica SU PROPIO adelanto contra SU PROPIO saldo — no hace
+  // falta prorratear nada entre domos, cada uno ya trae el dato exacto.
+  const domosConSaldo = (folioCombo?.domos || []).map(d => {
+    const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, d.montoAlojamientoUsd - d.adelantoPagado) : d.montoAlojamientoUsd;
+    const adelantoSolesParaConsumo = aplicarAdelantoA === "consumo" && tipoCambioRef ? d.adelantoPagado * tipoCambioRef : 0;
+    const saldoConsumoSoles = Math.max(0, d.totalConsumosSoles - adelantoSolesParaConsumo);
+    return { ...d, saldoHospedajeUsd, saldoConsumoSoles };
+  });
+
+  const saldoHospedajeUsdTotal = domosConSaldo.reduce((a, d) => a + d.saldoHospedajeUsd, 0);
+  const saldoConsumoSolesTotal = domosConSaldo.reduce((a, d) => a + d.saldoConsumoSoles, 0);
+
+  const usaTipoCambioHospedaje = monedaHospedaje === "PEN";
+  const usaTipoCambioConsumo = monedaConsumo === "USD";
+
+  const montoCobroHospedaje = usaTipoCambioHospedaje
+    ? saldoHospedajeUsdTotal * (Number(tipoCambioHospedaje) || 0)
+    : saldoHospedajeUsdTotal;
+  const montoCobroConsumo = usaTipoCambioConsumo
+    ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSolesTotal / Number(tipoCambioConsumo) : 0)
+    : saldoConsumoSolesTotal;
+
+  const hayHospedajeQueCobrar = saldoHospedajeUsdTotal > 0.009;
+  const hayConsumoQueCobrar = saldoConsumoSolesTotal > 0.009;
+
+  const gruposComprobantePorMoneda = {};
+  if (puedeEmitir) {
+    if (hayHospedajeQueCobrar) (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
+    if (hayConsumoQueCobrar) (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+  }
+
+  const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const sumaMixtoConsumo = mixtoConsumo.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const mixtoHospedajeOk = metodoHospedaje !== "mixto" || !hayHospedajeQueCobrar || Math.abs(sumaMixtoHospedaje - round2(montoCobroHospedaje)) < 0.01;
+  const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
+
+  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
+  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
+
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+
+  const hayComprobantePorEmitir = Object.keys(gruposComprobantePorMoneda).length > 0;
+  const facturaDatosOk = tipoComprobante !== "factura" || !hayComprobantePorEmitir
+    || (facturaRuc.trim().length === 11 && facturaRazonSocial.trim().length > 0);
+
+  function construirDesglosePorReserva(concepto, montoLineaTotal) {
+    const items = concepto === "hospedaje"
+      ? domosConSaldo.filter(d => d.saldoHospedajeUsd > 0.009)
+      : domosConSaldo.filter(d => d.saldoConsumoSoles > 0.009);
+    if (items.length === 0) return [];
+    const brutos = items.map(d => {
+      if (concepto === "hospedaje") {
+        return usaTipoCambioHospedaje ? d.saldoHospedajeUsd * (Number(tipoCambioHospedaje) || 0) : d.saldoHospedajeUsd;
+      }
+      return usaTipoCambioConsumo ? (Number(tipoCambioConsumo) > 0 ? d.saldoConsumoSoles / Number(tipoCambioConsumo) : 0) : d.saldoConsumoSoles;
+    });
+    const partes = repartirRedondeado(brutos, montoLineaTotal);
+    return items.map((d, i) => ({ reservaId: d.reservaId, monto: partes[i] }));
+  }
+
+  function construirPagosCombo() {
+    const pagos = [];
+    if (hayHospedajeQueCobrar) {
+      const montoLinea = round2(montoCobroHospedaje);
+      const linea = {
+        concepto: "hospedaje", monto: montoLinea, moneda: monedaHospedaje, metodoPago: metodoHospedaje,
+        desglosePorReserva: construirDesglosePorReserva("hospedaje", montoLinea),
+      };
+      if (usaTipoCambioHospedaje) linea.tipoCambio = Number(tipoCambioHospedaje);
+      if (metodoHospedaje === "mixto") linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      if (gruposComprobantePorMoneda[monedaHospedaje]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
+      }
+      pagos.push(linea);
+    }
+    if (hayConsumoQueCobrar) {
+      const montoLinea = round2(montoCobroConsumo);
+      const linea = {
+        concepto: "consumo", monto: montoLinea, moneda: monedaConsumo, metodoPago: metodoConsumo,
+        desglosePorReserva: construirDesglosePorReserva("consumo", montoLinea),
+      };
+      if (usaTipoCambioConsumo) linea.tipoCambio = Number(tipoCambioConsumo);
+      if (metodoConsumo === "mixto") linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      if (gruposComprobantePorMoneda[monedaConsumo]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
+      }
+      pagos.push(linea);
+    }
+    return pagos;
+  }
+
+  function construirItemsPreview() {
+    const domosPorId = {};
+    (folioCombo?.domos || []).forEach(d => { domosPorId[d.reservaId] = d; });
+    const pagos = construirPagosCombo();
+    const items = [];
+    pagos.filter(p => p.tipoComprobante).forEach(p => {
+      p.desglosePorReserva.forEach(entry => {
+        const domo = domosPorId[entry.reservaId] || {};
+        items.push({ descripcion: descripcionItemCombo(p.concepto, domo), monto: entry.monto, moneda: p.moneda });
+      });
+    });
+    return items;
+  }
+
+  function irAVistaPrevia() {
+    const pagos = construirPagosCombo();
+    if (pagos.length === 0) {
+      alert("No hay saldo pendiente por cobrar (los adelantos cubren todo). Contacta soporte si esto no es correcto.");
+      return;
+    }
+    if (!puedeEnviar) {
+      alert("Revisa el desglose de pago mixto o el tipo de cambio antes de continuar — hay algo que no cuadra.");
+      return;
+    }
+    if (!facturaDatosOk) {
+      alert("Para emitir factura, ingresa un RUC de 11 dígitos y la razón social.");
+      return;
+    }
+    if (!hayComprobantePorEmitir) {
+      confirmarCheckout();
+      return;
+    }
+    setVistaPreviaComprobante(true);
+  }
+
+  async function confirmarCheckout() {
+    const pagos = construirPagosCombo();
+    setEnviando(true);
+    setErrorEnvio(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/checkout-combinado`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservaIds: seleccionIds,
+          titularReservaId,
+          pagos,
+          staffId,
+          fechaEmision: fechaEmision.trim() || undefined,
+        }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setResultadoOk({ domos: folioCombo.domos, pagos, comprobantes: data.comprobantes || [] });
+    } catch (err) {
+      setErrorEnvio(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const clienteTitular = (folioCombo?.domos || []).find(d => d.reservaId === titularReservaId) || {};
+
+  if (resultadoOk) {
+    const comprobantesUnicos = [];
+    const vistos = new Set();
+    for (const c of resultadoOk.comprobantes) {
+      const clave = c.numeroComprobante || c.pagoId;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      comprobantesUnicos.push(c);
+    }
+    return (
+      <div>
+        <div style={{ fontSize: 40, marginBottom: 12, textAlign: "center" }}>✓</div>
+        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, color: T.green, textAlign: "center" }}>Cuentas cerradas</div>
+        <div style={{ color: T.ivoryMuted, fontSize: 14, marginBottom: 20, textAlign: "center" }}>
+          {resultadoOk.domos.map(d => d.domoCodigo).join(", ")} — {clienteTitular.nombreCompleto || ""}
+        </div>
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 18, marginBottom: 16 }}>
+          {resultadoOk.pagos.map((p, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "6px 0", borderBottom: i < resultadoOk.pagos.length - 1 ? `1px solid ${T.cardBorder}` : "none" }}>
+              <span style={{ textTransform: "capitalize" }}>{p.concepto}</span>
+              <span style={{ fontWeight: 700, color: T.gold }}>{p.moneda === "USD" ? "US$" : "S/."} {fmt(p.monto)}</span>
+            </div>
+          ))}
+        </div>
+        {comprobantesUnicos.length > 0 && (
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
+            {comprobantesUnicos.map((c, i) => (
+              <div key={i} style={{ marginBottom: i < comprobantesUnicos.length - 1 ? 12 : 0 }}>
+                {c.ok ? (
+                  <React.Fragment>
+                    <div style={{ fontSize: 12.5 }}>
+                      🧾 {c.tipoComprobante === "factura" ? "Factura" : "Boleta"} {c.numeroComprobante || ""}
+                      {c.sunatStatus ? ` · SUNAT: ${c.sunatStatus}` : ""}
+                    </div>
+                    {c.pdfUrl && (
+                      <a href={`${API_BASE_URL}/api/pagos/${c.pagoId}/comprobante-pdf`} target="_blank" rel="noopener noreferrer"
+                        style={{ display: "inline-block", marginTop: 6, fontSize: 12, fontWeight: 600, color: T.gold, textDecoration: "none", border: `1px solid ${T.gold}`, borderRadius: 6, padding: "5px 10px" }}>
+                        🖨️ Guardar / imprimir comprobante
+                      </a>
+                    )}
+                  </React.Fragment>
+                ) : (
+                  <div style={{ fontSize: 11.5, color: "#D98A7D" }}>
+                    ⚠️ No se pudo emitir el comprobante automáticamente ({c.error || "error desconocido"}). Los pagos quedaron registrados igual — reintenta desde "Corregir un pago anterior" para cada domo.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <a href="index.html" style={{ display: "block", textAlign: "center", background: T.gold, color: "#1C1A20", padding: "12px 28px", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 14 }}>Volver al panel</a>
+      </div>
+    );
+  }
+
+  if (!folioCombo || !preCuentaVista) {
+    return (
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>1. Marca los domos que van en la misma cuenta</div>
+        {cargandoHuespedes ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>Cargando huéspedes en casa...</div>
+        ) : huespedes.length === 0 ? (
+          <div style={{ color: T.ivoryMuted, fontSize: 13, marginBottom: 20 }}>No hay huéspedes en casa hoy.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {huespedes.map((h) => (
+              <label key={h.reserva_id} style={{
+                display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                border: seleccionIds.includes(h.reserva_id) ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: seleccionIds.includes(h.reserva_id) ? "rgba(201,162,75,0.15)" : T.card,
+                color: T.ivory, fontSize: 13.5,
+              }}>
+                <input type="checkbox" checked={seleccionIds.includes(h.reserva_id)} onChange={() => toggleSeleccion(h.reserva_id)} />
+                <span><strong>{h.codigo}</strong> — {h.nombre_completo || "Por confirmar"}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {seleccionIds.length === 1 && (
+          <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 16 }}>Marca al menos un domo más para combinar la cuenta.</div>
+        )}
+
+        {cargandoFolio && <div style={{ color: T.ivoryMuted, fontSize: 13 }}>Cargando pre-cuenta combinada...</div>}
+        {errorFolio && (
+          <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+            {errorFolio}
+          </div>
+        )}
+
+        {folioCombo && !cargandoFolio && (
+          <PreCuentaCombinada
+            folioCombo={folioCombo}
+            titularReservaId={titularReservaId}
+            onTitularChange={setTitularReservaId}
+            onContinuar={() => setPreCuentaVista(true)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (vistaPreviaComprobante) {
+    return (
+      <VistaPreviaComprobanteCombo
+        items={construirItemsPreview()}
+        tipoComprobante={tipoComprobante}
+        facturaRuc={facturaRuc}
+        facturaRazonSocial={facturaRazonSocial}
+        fechaEmision={fechaEmision.trim()}
+        clienteTitular={clienteTitular}
+        igvPorcentaje={folioCombo.igvPorcentaje}
+        enviando={enviando}
+        errorEnvio={errorEnvio}
+        onVolver={() => setVistaPreviaComprobante(false)}
+        onConfirmar={confirmarCheckout}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <button onClick={() => setPreCuentaVista(false)} style={{ background: "none", border: "none", color: T.ivoryMuted, fontSize: 12, cursor: "pointer", marginBottom: 12, padding: 0 }}>
+        ← Volver a la pre-cuenta
+      </button>
+
+      <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 18 }}>
+        Tipo de cambio referencial de hoy: <strong style={{ color: T.ivory }}>S/ {fmt(tipoCambioRef)}</strong> por US$ 1
+      </div>
+
+      {/* HOSPEDAJE */}
+      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje ({domosConSaldo.length} domos)</div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
+          <span>US$ {fmt(saldoHospedajeUsdTotal)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
+          <BotonMoneda moneda={monedaHospedaje} onChange={setMonedaHospedaje} />
+        </div>
+        {usaTipoCambioHospedaje && hayHospedajeQueCobrar && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (venta) — S/ por US$1:</span>
+            <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
+              onChange={(e) => setTipoCambioHospedaje(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioHospedajeOk ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+        <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
+          {monedaHospedaje === "USD" ? "US$" : "S/."} {fmt(montoCobroHospedaje)}
+        </div>
+        {hayHospedajeQueCobrar ? (
+          <React.Fragment>
+            <SelectorMetodo valor={metodoHospedaje} onChange={setMetodoHospedaje} />
+            {metodoHospedaje === "mixto" && (
+              <DesgloseMixto partes={mixtoHospedaje} onChange={setMixtoHospedaje} total={round2(montoCobroHospedaje)} simbolo={monedaHospedaje === "USD" ? "US$" : "S/."} />
+            )}
+          </React.Fragment>
+        ) : (
+          <div style={{ fontSize: 12, color: T.green }}>Cubierto por los adelantos</div>
+        )}
+      </div>
+
+      {/* CONSUMO */}
+      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🍽️ Consumo ({domosConSaldo.length} domos)</div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
+          <span>S/ {fmt(saldoConsumoSolesTotal)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
+          <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
+        </div>
+        {usaTipoCambioConsumo && hayConsumoQueCobrar && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
+            <input type="number" min="0" step="0.001" value={tipoCambioConsumo}
+              onChange={(e) => setTipoCambioConsumo(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioConsumoOk ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+        <div style={{ fontSize: 20, fontWeight: 700, color: T.gold, textAlign: "right", margin: "8px 0" }}>
+          {monedaConsumo === "USD" ? "US$" : "S/."} {fmt(montoCobroConsumo)}
+        </div>
+        {hayConsumoQueCobrar ? (
+          <React.Fragment>
+            <SelectorMetodo valor={metodoConsumo} onChange={setMetodoConsumo} />
+            {metodoConsumo === "mixto" && (
+              <DesgloseMixto partes={mixtoConsumo} onChange={setMixtoConsumo} total={round2(montoCobroConsumo)} simbolo={monedaConsumo === "USD" ? "US$" : "S/."} />
+            )}
+          </React.Fragment>
+        ) : (
+          <div style={{ fontSize: 12, color: T.green }}>Cubierto por los adelantos</div>
+        )}
+      </div>
+
+      {/* ADELANTOS — uno por domo, ya registrados al hacer check-in */}
+      {folioCombo.adelantoPagadoTotal > 0 && (
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelantos ya pagados (US$ {fmt(folioCombo.adelantoPagadoTotal)} en total)</div>
+          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>
+            Cada domo aplica el adelanto que ya tiene registrado desde su propio check-in — si alguno está mal, corrígelo antes desde el check-out individual de ese domo.
+          </div>
+          <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Aplicar los adelantos a:</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[
+              { valor: "hospedaje", label: "Hospedaje" },
+              { valor: "consumo", label: "Consumo" },
+              { valor: "ninguno", label: "Ninguno" },
+            ].map((op) => (
+              <button key={op.valor} onClick={() => setAplicarAdelantoA(op.valor)} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                border: aplicarAdelantoA === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: aplicarAdelantoA === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+                color: aplicarAdelantoA === op.valor ? T.gold : T.ivoryMuted,
+              }}>{op.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!puedeEmitir && (hayHospedajeQueCobrar || hayConsumoQueCobrar) && (
+        <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 14 }}>
+          🧾 La boleta/factura de esta cuenta combinada la emite después Dante, Yanet o Royer desde "Corregir un pago anterior" — tú solo cierras el cobro.
+        </div>
+      )}
+
+      {hayComprobantePorEmitir && (
+        <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>🧾 Comprobante electrónico (SUNAT)</div>
+          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 12 }}>
+            Se emitirá automáticamente al confirmar, itemizado por domo — uno por cada moneda distinta que se esté cobrando ({Object.keys(gruposComprobantePorMoneda).map(m => gruposComprobantePorMoneda[m].join("+")).join(" · ")}). Saldrá a nombre de <strong>{clienteTitular.nombreCompleto || "(elige titular en la pre-cuenta)"}</strong>.
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: tipoComprobante === "factura" ? 12 : 0 }}>
+            {[{ valor: "boleta", label: "Boleta" }, { valor: "factura", label: "Factura" }].map((op) => (
+              <button key={op.valor} onClick={() => setTipoComprobante(op.valor)} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                border: tipoComprobante === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+                background: tipoComprobante === op.valor ? "rgba(201,162,75,0.15)" : T.bg,
+                color: tipoComprobante === op.valor ? T.gold : T.ivoryMuted,
+              }}>{op.label}</button>
+            ))}
+          </div>
+          {tipoComprobante === "factura" && (
+            <React.Fragment>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>RUC del cliente (11 dígitos)</div>
+                <input value={facturaRuc} maxLength={11}
+                  onChange={(e) => setFacturaRuc(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Ej: 20605979034"
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Razón social</div>
+                <input value={facturaRazonSocial}
+                  onChange={(e) => setFacturaRazonSocial(e.target.value)}
+                  placeholder="Ej: Empresa S.A.C."
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+            </React.Fragment>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Fecha de emisión (opcional — déjalo vacío para emitir con la fecha de hoy)</div>
+            <input type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)}
+              style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        </div>
+      )}
+
+      {errorEnvio && (
+        <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
+          Error: {errorEnvio}
+        </div>
+      )}
+
+      <button onClick={irAVistaPrevia} disabled={!puedeEnviar} style={{
+        width: "100%", background: !puedeEnviar ? T.cardBorder : T.gold,
+        color: !puedeEnviar ? T.ivoryMuted : "#1C1A20", border: "none", borderRadius: 10,
+        padding: "15px 0", fontSize: 15, fontWeight: 700, cursor: !puedeEnviar ? "not-allowed" : "pointer",
+      }}>
+        {puedeEnviar ? (hayComprobantePorEmitir ? "Ver vista previa del comprobante →" : "✓ Cerrar cuentas") : "Revisa los montos antes de continuar"}
+      </button>
+    </div>
+  );
+}
+
 function CheckoutPantalla() {
   const sesion = useSesionFresca();
   const puedeEmitir = !!(sesion && (sesion.puede_emitir_comprobantes || sesion.es_administrador));
   const [modo, setModo] = useState(corregirIdParam ? "corregir" : "checkout"); // "checkout" | "corregir"
+  const [modoCombo, setModoCombo] = useState(false); // false = un domo (de siempre) | true = varios domos juntos en un solo comprobante
   const [huespedes, setHuespedes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [reservaSel, setReservaSel] = useState(null);
@@ -1743,6 +2440,18 @@ function CheckoutPantalla() {
         ) : (
         <React.Fragment>
 
+        {!idBloqueado && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <button onClick={() => setModoCombo(false)} style={tabEstilo(!modoCombo)}>Un domo</button>
+            <button onClick={() => setModoCombo(true)} style={tabEstilo(modoCombo)}>Varios domos juntos</button>
+          </div>
+        )}
+
+        {modoCombo && !idBloqueado ? (
+          <CheckoutCombinado huespedes={huespedes} cargandoHuespedes={cargando} puedeEmitir={puedeEmitir} staffId={sesion?.id || null} />
+        ) : (
+        <React.Fragment>
+
         {idBloqueado ? (
           <div style={{ marginBottom: 20 }}>
             {cargando ? (
@@ -2017,6 +2726,9 @@ function CheckoutPantalla() {
           </React.Fragment>
           )}
           </React.Fragment>
+        )}
+
+        </React.Fragment>
         )}
 
         </React.Fragment>
