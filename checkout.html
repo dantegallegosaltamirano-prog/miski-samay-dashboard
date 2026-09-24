@@ -1440,8 +1440,74 @@ function repartirRedondeado(valoresBrutos, totalFinal) {
   return partes;
 }
 
-function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onContinuar }) {
+function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onContinuar, onFolioActualizado }) {
   const domos = folioCombo.domos;
+
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [domoFrigobarId, setDomoFrigobarId] = useState(domos[0]?.reservaId || "");
+  const [descItem, setDescItem] = useState("");
+  const [cantItem, setCantItem] = useState("1");
+  const [precioItem, setPrecioItem] = useState("");
+  const [agregando, setAgregando] = useState(false);
+  const [errorItem, setErrorItem] = useState(null);
+  const [eliminandoId, setEliminandoId] = useState(null);
+  const [errorEliminar, setErrorEliminar] = useState(null);
+
+  const puedeAgregar = !!domoFrigobarId && descItem.trim().length > 0 && Number(cantItem) > 0 && Number(precioItem) > 0;
+
+  // Mismo endpoint que usa el check-out de un solo domo (POST
+  // /api/reservas/:id/consumos) — aquí el cajero primero elige A CUÁL de
+  // los domos combinados va el consumo, porque cada domo mantiene su
+  // propio detalle de consumos por separado.
+  async function agregarFrigobar() {
+    if (!puedeAgregar) {
+      setErrorItem("Elige el domo y completa descripción, cantidad y precio unitario.");
+      return;
+    }
+    setAgregando(true);
+    setErrorItem(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${domoFrigobarId}/consumos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoria: "frigobar",
+          descripcion: descItem.trim(),
+          cantidad: Number(cantItem),
+          precioUnitario: round2(Number(precioItem)),
+          monto: round2(Number(cantItem) * Number(precioItem)),
+          estado: "entregado",
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo agregar el consumo");
+      setDescItem(""); setCantItem("1"); setPrecioItem(""); setMostrarForm(false);
+      onFolioActualizado();
+    } catch (e) {
+      setErrorItem(e.message);
+    } finally {
+      setAgregando(false);
+    }
+  }
+
+  async function eliminarConsumo(domoReservaId, it) {
+    if (it.id == null) return;
+    const ok = window.confirm(`¿Quitar "${it.cantidad}x ${it.descripcion}" de la cuenta? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    setEliminandoId(it.id);
+    setErrorEliminar(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/reservas/${domoReservaId}/consumos/${it.id}`, { method: "DELETE" });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo quitar el consumo");
+      onFolioActualizado();
+    } catch (e) {
+      setErrorEliminar(e.message);
+    } finally {
+      setEliminandoId(null);
+    }
+  }
+
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Domos incluidos ({domos.length})</div>
@@ -1455,13 +1521,95 @@ function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onC
           {d.detalleConsumos.length > 0 && (
             <div style={{ fontSize: 11.5, color: T.ivoryMuted }}>
               {d.detalleConsumos.map((c) => (
-                <div key={c.id}>· {c.descripcion} x{c.cantidad}: S/ {fmt(c.subtotal)}</div>
+                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+                  <span>· {c.descripcion} x{c.cantidad}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>S/ {fmt(c.subtotal)}</span>
+                    {c.id != null && (
+                      <button
+                        onClick={() => eliminarConsumo(d.reservaId, c)}
+                        disabled={eliminandoId === c.id}
+                        title="Quitar este consumo de la cuenta"
+                        style={{
+                          background: "none", border: "none",
+                          color: eliminandoId === c.id ? T.ivoryMuted : "#D98A7D",
+                          cursor: eliminandoId === c.id ? "not-allowed" : "pointer",
+                          fontSize: 13, fontWeight: 700, padding: "0 2px", lineHeight: 1,
+                        }}
+                      >
+                        {eliminandoId === c.id ? "…" : "✕"}
+                      </button>
+                    )}
+                  </span>
+                </div>
               ))}
               <div style={{ marginTop: 4, fontWeight: 600 }}>Consumo: S/ {fmt(d.totalConsumosSoles)}</div>
             </div>
           )}
         </div>
       ))}
+
+      {errorEliminar && (
+        <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 12 }}>
+          {errorEliminar}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
+        {!mostrarForm ? (
+          <button onClick={() => setMostrarForm(true)} style={{
+            width: "100%", background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted,
+            borderRadius: 10, padding: "10px 0", fontWeight: 600, fontSize: 12.5, cursor: "pointer",
+          }}>
+            + Agregar consumo no reportado (frigobar, etc.)
+          </button>
+        ) : (
+          <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Agregar consumo de frigobar u otro no reportado:</div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>¿A qué domo va este consumo?</div>
+              <select value={domoFrigobarId} onChange={(e) => setDomoFrigobarId(e.target.value)} style={{
+                width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
+                padding: "8px 10px", color: T.ivory, fontSize: 13,
+              }}>
+                {domos.map((d) => (
+                  <option key={d.reservaId} value={d.reservaId}>{d.domoCodigo} — {d.nombreCompleto || "Por confirmar"}</option>
+                ))}
+              </select>
+            </div>
+            <input value={descItem} onChange={(e) => setDescItem(e.target.value)}
+              placeholder="Ej: Cerveza, Gaseosa, Agua"
+              style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13, marginBottom: 8 }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Cantidad</div>
+                <input type="number" min="1" step="1" value={cantItem} onChange={(e) => setCantItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginBottom: 4 }}>Precio unitario (S/)</div>
+                <input type="number" min="0" step="0.01" value={precioItem} onChange={(e) => setPrecioItem(e.target.value)}
+                  style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", color: T.ivory, fontSize: 13 }} />
+              </div>
+            </div>
+            {errorItem && (
+              <div style={{ background: "rgba(184,63,50,0.12)", border: "1px solid #A83E32", color: "#D98A7D", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>
+                {errorItem}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setMostrarForm(false); setErrorItem(null); }} style={{
+                flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                borderRadius: 8, padding: "9px 0", fontSize: 12.5, cursor: "pointer",
+              }}>Cancelar</button>
+              <button onClick={agregarFrigobar} disabled={agregando} style={{
+                flex: 1, background: agregando ? T.cardBorder : T.gold, color: agregando ? T.ivoryMuted : "#1C1A20",
+                border: "none", borderRadius: 8, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: agregando ? "not-allowed" : "pointer",
+              }}>{agregando ? "Agregando..." : "Agregar a la cuenta"}</button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 4 }}>
@@ -1625,24 +1773,33 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
     setSeleccionIds(prev => prev.includes(reservaId) ? prev.filter(id => id !== reservaId) : [...prev, reservaId]);
   }
 
+  // Separado de una función aparte (en vez de vivir solo dentro del
+  // useEffect) para poder volver a llamarlo después de agregar/quitar un
+  // consumo de frigobar desde la pre-cuenta combinada, sin resetear
+  // preCuentaVista (onFolioActualizado abajo) — a diferencia del cambio de
+  // selección de domos, que si debe mandar de vuelta a revisar la pre-cuenta.
+  function cargarFolioCombo(ids) {
+    setErrorFolio(null);
+    setCargandoFolio(true);
+    fetch(`${API_BASE_URL}/api/reservas/folio-combinado?ids=${ids.join(",")}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { setErrorFolio(data.error); setCargandoFolio(false); return; }
+        setFolioCombo(data);
+        setTitularReservaId(prev => (prev && ids.includes(prev)) ? prev : (data.domos[0]?.reservaId || null));
+        const tc = Number(data.tipoCambio) || 0;
+        setTipoCambioHospedaje(tc);
+        setTipoCambioConsumo(tc);
+        setCargandoFolio(false);
+      })
+      .catch(() => { setErrorFolio("No se pudo cargar el folio combinado"); setCargandoFolio(false); });
+  }
+
   useEffect(() => {
     if (seleccionIds.length >= 2) {
       setFolioCombo(null);
-      setErrorFolio(null);
       setPreCuentaVista(false);
-      setCargandoFolio(true);
-      fetch(`${API_BASE_URL}/api/reservas/folio-combinado?ids=${seleccionIds.join(",")}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.error) { setErrorFolio(data.error); setCargandoFolio(false); return; }
-          setFolioCombo(data);
-          setTitularReservaId(prev => (prev && seleccionIds.includes(prev)) ? prev : (data.domos[0]?.reservaId || null));
-          const tc = Number(data.tipoCambio) || 0;
-          setTipoCambioHospedaje(tc);
-          setTipoCambioConsumo(tc);
-          setCargandoFolio(false);
-        })
-        .catch(() => { setErrorFolio("No se pudo cargar el folio combinado"); setCargandoFolio(false); });
+      cargarFolioCombo(seleccionIds);
     } else {
       setFolioCombo(null);
       setErrorFolio(null);
@@ -1903,6 +2060,7 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
             folioCombo={folioCombo}
             titularReservaId={titularReservaId}
             onTitularChange={setTitularReservaId}
+            onFolioActualizado={() => cargarFolioCombo(seleccionIds)}
             onContinuar={() => setPreCuentaVista(true)}
           />
         )}
