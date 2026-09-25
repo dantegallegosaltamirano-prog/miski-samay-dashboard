@@ -684,6 +684,9 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
       const textoNoches = noches != null && noches > 0 ? ` — ${noches} noche${noches === 1 ? "" : "s"}` : "";
       return `Servicio de alojamiento (Domo ${c.domoCodigo || "?"})${textoFechas}${textoNoches}`;
     }
+    if (concepto === "propina") {
+      return "Propina / recargo al consumo (no afecto a IGV)";
+    }
     return "Consumo en restaurante";
   }
 
@@ -871,7 +874,7 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
 
         <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 6 }}>¿Qué tipo de cargo es?</div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          {[{ valor: "consumo", label: "Consumo" }, { valor: "hospedaje", label: "Hospedaje" }].map((op) => (
+          {[{ valor: "consumo", label: "Consumo" }, { valor: "hospedaje", label: "Hospedaje" }, { valor: "propina", label: "Propina" }].map((op) => (
             <button key={op.valor} onClick={() => { setNuevoConcepto(op.valor); setMoneda(op.valor === "hospedaje" ? "USD" : "PEN"); }} style={{
               flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
               border: nuevoConcepto === op.valor ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
@@ -1323,14 +1326,24 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
 
       {Object.keys(porMoneda).map((moneda) => {
         const lineas = porMoneda[moneda];
-        const total = lineas.reduce((a, p) => a + Number(p.monto || 0), 0);
-        // El monto que cobramos ya incluye IGV — se envía a HaylliERP como
-        // prices_include_igv:true, así que aquí desglosamos con la misma
+        // La propina NO lleva IGV (Art. 5ta disp. compl. D.L. 25988 — ver
+        // investigación de 25 set), así que se separa del resto ANTES de
+        // desglosar el IGV: si se metiera en el mismo total se le estaría
+        // cobrando IGV a la propina, y el desglose ya no cuadraría con lo
+        // que de verdad se le manda a HaylliERP (igv_type "30" / inafecto
+        // solo para la línea de propina).
+        const lineasPropina = lineas.filter(p => p.concepto === "propina");
+        const lineasGravadas = lineas.filter(p => p.concepto !== "propina");
+        const totalGravado = lineasGravadas.reduce((a, p) => a + Number(p.monto || 0), 0);
+        const totalPropina = lineasPropina.reduce((a, p) => a + Number(p.monto || 0), 0);
+        const total = totalGravado + totalPropina;
+        // El monto gravado que cobramos ya incluye IGV — se envía a HaylliERP
+        // como prices_include_igv:true, así que aquí desglosamos con la misma
         // tasa configurada en el servidor (18% por defecto; puede ser
         // 10.5%/15% si aplica el beneficio MYPE de Ley 31556/32219).
         const tasaIgv = Number(folio?.igvPorcentaje) || 18;
-        const opGravada = total / (1 + tasaIgv / 100);
-        const igv = total - opGravada;
+        const opGravada = totalGravado / (1 + tasaIgv / 100);
+        const igv = totalGravado - opGravada;
         const simbolo = moneda === "USD" ? "US$" : "S/.";
         const esFactura = tipoComprobante === "factura";
         return (
@@ -1353,7 +1366,7 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
               {lineas.map((p, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                   <span style={{ color: T.ivoryMuted }}>{descripcionItemPreview(p.concepto)}</span>
-                  <span>{simbolo} {fmt(p.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>(incl. IGV)</span></span>
+                  <span>{simbolo} {fmt(p.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>{p.concepto === "propina" ? "(no afecto a IGV)" : "(incl. IGV)"}</span></span>
                 </div>
               ))}
             </div>
@@ -1366,6 +1379,12 @@ function VistaPreviaComprobante({ folio, tipoComprobante, facturaRuc, facturaRaz
                 <span>IGV ({tasaIgv}%)</span>
                 <span>{simbolo} {fmt(igv)}</span>
               </div>
+              {totalPropina > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
+                  <span>Propina (inafecto — no gravado)</span>
+                  <span>{simbolo} {fmt(totalPropina)}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
                 <span>Total</span>
                 <span style={{ color: T.gold }}>{simbolo} {fmt(total)}</span>
@@ -1422,6 +1441,9 @@ function descripcionItemCombo(concepto, domo) {
     const textoFechas = desdeTexto && hastaTexto ? ` del ${desdeTexto} al ${hastaTexto}` : "";
     const textoNoches = noches != null && noches > 0 ? ` — ${noches} noche${noches === 1 ? "" : "s"}` : "";
     return `Servicio de alojamiento (Domo ${domo.domoCodigo || "?"})${textoFechas}${textoNoches}`;
+  }
+  if (concepto === "propina") {
+    return "Propina / recargo al consumo (no afecto a IGV)";
   }
   return `Consumo en restaurante (Domo ${domo.domoCodigo || "?"})`;
 }
@@ -1670,10 +1692,17 @@ function VistaPreviaComprobanteCombo({ items, tipoComprobante, facturaRuc, factu
 
       {Object.keys(porMoneda).map((moneda) => {
         const lineas = porMoneda[moneda];
-        const total = lineas.reduce((a, it) => a + Number(it.monto || 0), 0);
+        // Misma lógica que en VistaPreviaComprobante (un solo domo): la
+        // propina no lleva IGV, así que se separa antes de calcular el
+        // desglose de op. gravada / IGV.
+        const lineasPropina = lineas.filter(it => it.concepto === "propina");
+        const lineasGravadas = lineas.filter(it => it.concepto !== "propina");
+        const totalGravado = lineasGravadas.reduce((a, it) => a + Number(it.monto || 0), 0);
+        const totalPropina = lineasPropina.reduce((a, it) => a + Number(it.monto || 0), 0);
+        const total = totalGravado + totalPropina;
         const tasaIgv = Number(igvPorcentaje) || 18;
-        const opGravada = total / (1 + tasaIgv / 100);
-        const igv = total - opGravada;
+        const opGravada = totalGravado / (1 + tasaIgv / 100);
+        const igv = totalGravado - opGravada;
         const simbolo = moneda === "USD" ? "US$" : "S/.";
         const esFactura = tipoComprobante === "factura";
         return (
@@ -1696,7 +1725,7 @@ function VistaPreviaComprobanteCombo({ items, tipoComprobante, facturaRuc, factu
               {lineas.map((it, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                   <span style={{ color: T.ivoryMuted }}>{it.descripcion}</span>
-                  <span>{simbolo} {fmt(it.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>(incl. IGV)</span></span>
+                  <span>{simbolo} {fmt(it.monto)} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>{it.concepto === "propina" ? "(no afecto a IGV)" : "(incl. IGV)"}</span></span>
                 </div>
               ))}
             </div>
@@ -1707,6 +1736,11 @@ function VistaPreviaComprobanteCombo({ items, tipoComprobante, facturaRuc, factu
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
                 <span>IGV ({tasaIgv}%)</span><span>{simbolo} {fmt(igv)}</span>
               </div>
+              {totalPropina > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
+                  <span>Propina (inafecto — no gravado)</span><span>{simbolo} {fmt(totalPropina)}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
                 <span>Total</span><span style={{ color: T.gold }}>{simbolo} {fmt(total)}</span>
               </div>
@@ -1754,6 +1788,16 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
   const [tipoCambioConsumo, setTipoCambioConsumo] = useState(0);
   const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
   const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
+  // Propina (25 set, pedido de Dante) — igual que en el check-out de un solo
+  // domo: monto extra opcional, va en el mismo pago/comprobante, sin IGV. En
+  // el combinado se asigna entera al domo TITULAR (el que da la cara en el
+  // comprobante), vía un solo desglosePorReserva con esa reserva.
+  const [montoPropina, setMontoPropina] = useState(0);
+  const [monedaPropina, setMonedaPropina] = useState("PEN");
+  const [metodoPropina, setMetodoPropina] = useState("efectivo");
+  const [mixtoPropina, setMixtoPropina] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
   // A diferencia del check-out de un solo domo, aquí el adelanto NO se
   // edita a mano: cada domo ya trae el suyo (registrado en su propio
   // check-in) — solo se elige a qué concepto aplicarlo.
@@ -1834,21 +1878,26 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
   const hayHospedajeQueCobrar = saldoHospedajeUsdTotal > 0.009;
   const hayConsumoQueCobrar = saldoConsumoSolesTotal > 0.009;
 
+  const hayPropinaQueCobrar = Number(montoPropina) > 0.009;
+
   const gruposComprobantePorMoneda = {};
   if (puedeEmitir) {
     if (hayHospedajeQueCobrar) (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
     if (hayConsumoQueCobrar) (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+    if (hayPropinaQueCobrar) (gruposComprobantePorMoneda[monedaPropina] = gruposComprobantePorMoneda[monedaPropina] || []).push("Propina");
   }
 
   const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
   const sumaMixtoConsumo = mixtoConsumo.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const sumaMixtoPropina = mixtoPropina.reduce((a, p) => a + (Number(p.monto) || 0), 0);
   const mixtoHospedajeOk = metodoHospedaje !== "mixto" || !hayHospedajeQueCobrar || Math.abs(sumaMixtoHospedaje - round2(montoCobroHospedaje)) < 0.01;
   const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
+  const mixtoPropinaOk = metodoPropina !== "mixto" || !hayPropinaQueCobrar || Math.abs(sumaMixtoPropina - round2(Number(montoPropina) || 0)) < 0.01;
 
   const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
   const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
 
-  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
 
   const hayComprobantePorEmitir = Object.keys(gruposComprobantePorMoneda).length > 0;
   const facturaDatosOk = tipoComprobante !== "factura" || !hayComprobantePorEmitir
@@ -1899,6 +1948,23 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
       }
       pagos.push(linea);
     }
+    if (hayPropinaQueCobrar) {
+      const montoLinea = round2(Number(montoPropina) || 0);
+      const linea = {
+        concepto: "propina", monto: montoLinea, moneda: monedaPropina, metodoPago: metodoPropina,
+        // La propina entera va al domo TITULAR — no se reparte entre los
+        // demás domos, a diferencia de hospedaje/consumo (pedido implícito
+        // de Dante: es un solo monto que el huésped pide agregar, no algo
+        // que tenga sentido prorratear por domo).
+        desglosePorReserva: titularReservaId ? [{ reservaId: titularReservaId, monto: montoLinea }] : [],
+      };
+      if (metodoPropina === "mixto") linea.detalleMixto = mixtoPropina.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      if (gruposComprobantePorMoneda[monedaPropina]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
+      }
+      pagos.push(linea);
+    }
     return pagos;
   }
 
@@ -1910,7 +1976,7 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
     pagos.filter(p => p.tipoComprobante).forEach(p => {
       p.desglosePorReserva.forEach(entry => {
         const domo = domosPorId[entry.reservaId] || {};
-        items.push({ descripcion: descripcionItemCombo(p.concepto, domo), monto: entry.monto, moneda: p.moneda });
+        items.push({ descripcion: descripcionItemCombo(p.concepto, domo), monto: entry.monto, moneda: p.moneda, concepto: p.concepto });
       });
     });
     return items;
@@ -2162,6 +2228,30 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
         )}
       </div>
 
+      {/* PROPINA (opcional) — va entera a nombre del domo titular */}
+      <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>💛 Propina (opcional)</div>
+        <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>
+          Si el huésped pide agregar un monto extra como propina para el personal, ingrésalo aquí — se cobra junto con el resto, va a nombre de <strong>{clienteTitular.nombreCompleto || "el titular"}</strong> y sale en el mismo comprobante, sin IGV.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <input type="number" min="0" step="0.01" value={montoPropina}
+            onChange={(e) => setMontoPropina(e.target.value)}
+            placeholder="0.00"
+            style={{ flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", color: T.ivory, fontSize: 14 }} />
+          <BotonMoneda moneda={monedaPropina} onChange={setMonedaPropina} />
+        </div>
+        {hayPropinaQueCobrar && (
+          <React.Fragment>
+            <SelectorMetodo valor={metodoPropina} onChange={setMetodoPropina} />
+            {metodoPropina === "mixto" && (
+              <DesgloseMixto partes={mixtoPropina} onChange={setMixtoPropina}
+                total={round2(Number(montoPropina) || 0)} simbolo={monedaPropina === "USD" ? "US$" : "S/."} />
+            )}
+          </React.Fragment>
+        )}
+      </div>
+
       {/* ADELANTOS — uno por domo, ya registrados al hacer check-in */}
       {folioCombo.adelantoPagadoTotal > 0 && (
         <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
@@ -2283,6 +2373,16 @@ function CheckoutPantalla() {
   const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
   const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
 
+  // Propina (25 set, pedido de Dante): monto extra que a veces el huésped
+  // pide agregar para el personal, después de ver hospedaje + consumo. Va
+  // en el mismo pago/comprobante (no se reparte aparte) — por eso no tiene
+  // "moneda nativa" ni tipo de cambio propio, el staff simplemente ingresa
+  // el monto en la moneda en que se está cobrando.
+  const [montoPropina, setMontoPropina] = useState(0);
+  const [monedaPropina, setMonedaPropina] = useState("PEN");
+  const [metodoPropina, setMetodoPropina] = useState("efectivo");
+  const [mixtoPropina, setMixtoPropina] = useState([nuevaParteMixto(), nuevaParteMixto()]);
+
   // Comprobante electrónico (SUNAT) — se emite AUTOMÁTICAMENTE al cerrar la
   // cuenta, vía la integración con HaylliERP (server.js llama a su API). Un
   // comprobante por cada moneda distinta que se esté cobrando (no por
@@ -2391,6 +2491,8 @@ function CheckoutPantalla() {
   // propósito: el check-out se cierra igual (se cobra y se guarda el pago),
   // pero SIN llamar a HaylliERP/SUNAT. Alguien con permiso lo emite después
   // desde "Corregir un pago anterior" → "+ Agregar comprobante".
+  const hayPropinaQueCobrar = Number(montoPropina) > 0.009;
+
   const gruposComprobantePorMoneda = {};
   if (puedeEmitir) {
     if (hayHospedajeQueCobrar) {
@@ -2399,17 +2501,22 @@ function CheckoutPantalla() {
     if (hayConsumoQueCobrar) {
       (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
     }
+    if (hayPropinaQueCobrar) {
+      (gruposComprobantePorMoneda[monedaPropina] = gruposComprobantePorMoneda[monedaPropina] || []).push("Propina");
+    }
   }
 
   const sumaMixtoHospedaje = mixtoHospedaje.reduce((a, p) => a + (Number(p.monto) || 0), 0);
   const sumaMixtoConsumo = mixtoConsumo.reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  const sumaMixtoPropina = mixtoPropina.reduce((a, p) => a + (Number(p.monto) || 0), 0);
   const mixtoHospedajeOk = metodoHospedaje !== "mixto" || !hayHospedajeQueCobrar || Math.abs(sumaMixtoHospedaje - round2(montoCobroHospedaje)) < 0.01;
   const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
+  const mixtoPropinaOk = metodoPropina !== "mixto" || !hayPropinaQueCobrar || Math.abs(sumaMixtoPropina - round2(Number(montoPropina) || 0)) < 0.01;
 
   const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
   const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
 
-  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
 
   function construirPagos() {
     const pagos = [];
@@ -2435,6 +2542,20 @@ function CheckoutPantalla() {
         linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
       }
       if (gruposComprobantePorMoneda[monedaConsumo]) {
+        linea.tipoComprobante = tipoComprobante;
+        if (tipoComprobante === "factura") {
+          linea.facturaRuc = facturaRuc.trim();
+          linea.facturaRazonSocial = facturaRazonSocial.trim();
+        }
+      }
+      pagos.push(linea);
+    }
+    if (hayPropinaQueCobrar) {
+      const linea = { concepto: "propina", monto: round2(Number(montoPropina) || 0), moneda: monedaPropina, metodoPago: metodoPropina };
+      if (metodoPropina === "mixto") {
+        linea.detalleMixto = mixtoPropina.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
+      }
+      if (gruposComprobantePorMoneda[monedaPropina]) {
         linea.tipoComprobante = tipoComprobante;
         if (tipoComprobante === "factura") {
           linea.facturaRuc = facturaRuc.trim();
@@ -2783,6 +2904,34 @@ function CheckoutPantalla() {
                 </React.Fragment>
               )}
               {!hayConsumoQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
+            </div>
+
+            {/* PROPINA (opcional) — 25 set, pedido de Dante: cuando el huésped
+                pide agregar un monto extra para el personal después de ver su
+                cuenta. Va en el MISMO pago/comprobante que hospedaje/consumo
+                (nunca aparte), y no lleva IGV — ver haylliDescripcionItem()
+                y el desglose igv_type en el servidor. */}
+            <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>💛 Propina (opcional)</div>
+              <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>
+                Si el huésped pide agregar un monto extra como propina para el personal, ingrésalo aquí — se cobra junto con el resto y sale en el mismo comprobante, sin IGV.
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <input type="number" min="0" step="0.01" value={montoPropina}
+                  onChange={(e) => setMontoPropina(e.target.value)}
+                  placeholder="0.00"
+                  style={{ flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", color: T.ivory, fontSize: 14 }} />
+                <BotonMoneda moneda={monedaPropina} onChange={setMonedaPropina} />
+              </div>
+              {hayPropinaQueCobrar && (
+                <React.Fragment>
+                  <SelectorMetodo valor={metodoPropina} onChange={setMetodoPropina} />
+                  {metodoPropina === "mixto" && (
+                    <DesgloseMixto partes={mixtoPropina} onChange={setMixtoPropina}
+                      total={round2(Number(montoPropina) || 0)} simbolo={monedaPropina === "USD" ? "US$" : "S/."} />
+                  )}
+                </React.Fragment>
+              )}
             </div>
 
             {/* ADELANTO — siempre en USD */}
