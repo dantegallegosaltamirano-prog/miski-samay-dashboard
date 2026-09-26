@@ -40,11 +40,19 @@ ref.current.innerHTML = "";
 const qr = qrcode(0, "M");
 qr.addData(texto);
 qr.make();
-ref.current.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4 });
+ref.current.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2 });
+// El link del huésped es más largo que el texto antiguo → QR más grande;
+// lo escalamos para que siempre entre en el recuadro blanco.
+const svg = ref.current.querySelector("svg");
+if (svg) {
+const w = svg.getAttribute("width"), h = svg.getAttribute("height");
+if (w && h && !svg.getAttribute("viewBox")) svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+svg.setAttribute("width", "100%"); svg.setAttribute("height", "100%");
+}
 }, [texto]);
 return (
-<div style={{ width: 140, height: 140, background: "#fff", padding: 8, borderRadius: 8, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
-<div ref={ref} />
+<div style={{ width: 170, height: 170, background: "#fff", padding: 8, borderRadius: 8, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+<div ref={ref} style={{ width: "100%", height: "100%" }} />
 </div>
 );
 }
@@ -65,11 +73,12 @@ const [errorCarga, setErrorCarga] = useState(null);
 
 React.useEffect(() => {
 if (!reservaId) { setErrorCarga("No se indicó un ID de reserva en el enlace."); setCargando(false); return; }
-// Forzamos una sincronización con Aloha antes de traer la reserva,
-// para que el check-in trabaje con datos lo más actualizados posible.
-fetch(`https://miski-samay-backend-production.up.railway.app/api/sync/ical-now`)
-.catch(() => {})
-.finally(() => {
+// Velocidad (25 set): la sincronización con Aloha ya NO se espera antes
+// de abrir la reserva (la reserva ya existe — se llegó aquí desde la
+// lista). Corre en segundo plano, y el cron del servidor sincroniza cada
+// 20 min de todas formas.
+fetch(`https://miski-samay-backend-production.up.railway.app/api/sync/ical-now`).catch(() => {});
+(() => {
 fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaId}`)
 .then(r => r.json())
 .then((data) => {
@@ -89,8 +98,17 @@ etiquetaFechas: `${fechas.length} noche(s)`,
 setCargando(false);
 })
 .catch((err) => { setErrorCarga("No se pudo conectar con el backend."); setCargando(false); });
-});
+})();
+// Diálogo con Huésped: datos que el propio huésped confirmó antes de
+// llegar (desde el link de WhatsApp). Si falla, el check-in sigue igual.
+fetch(`https://miski-samay-backend-production.up.railway.app/api/reservas/${reservaId}/prellegada`)
+.then(r => r.ok ? r.json() : null)
+.then((d) => { if (d && d.datos) setPrellegada({ ...d.datos, confirmadoEn: d.confirmadoEn }); })
+.catch(() => {});
 }, [reservaId]);
+const [prellegada, setPrellegada] = useState(null);
+const [codigoHuesped, setCodigoHuesped] = useState(null);
+const [linkCopiado, setLinkCopiado] = useState(false);
 
 const [nombre, setNombre] = useState("");
 const [tipoDocumento, setTipoDocumento] = useState("");
@@ -163,6 +181,19 @@ const [pais, setPais] = useState("");
 const [celular, setCelular] = useState("");
 const [correo, setCorreo] = useState("");
 const [adelantoPagado, setAdelantoPagado] = useState("");
+
+// Pre-llenado con lo que confirmó el huésped (solo campos vacíos — lo
+// que recepción ya escribió a mano no se pisa). Recepción lo revisa
+// igual antes de completar el check-in.
+React.useEffect(() => {
+if (!prellegada || !reserva) return;
+if (prellegada.nombreCompleto) setNombre((v) => v && v !== reserva.huespedNombre ? v : prellegada.nombreCompleto);
+if (prellegada.tipoDocumento) setTipoDocumento((v) => v || prellegada.tipoDocumento);
+if (prellegada.numeroDocumento) setNumeroDocumento((v) => v || prellegada.numeroDocumento);
+if (prellegada.pais && PAISES.includes(prellegada.pais)) setPais((v) => v || prellegada.pais);
+if (prellegada.celular) setCelular((v) => v || prellegada.celular);
+if (prellegada.correo) setCorreo((v) => v || prellegada.correo);
+}, [prellegada, reserva]);
 
 function actualizarNoche(i, campo, valor) {
 const copia = [...noches];
@@ -255,6 +286,7 @@ adelantoPagado: adelantoPagado || 0
 .then(data => {
 setEnviando(false);
 if (data.error) { alert("Error al completar el check-in: " + data.error); return; }
+if (data.codigoHuesped) setCodigoHuesped(data.codigoHuesped);
 setCompletado(true);
 })
 .catch(err => {
@@ -267,14 +299,34 @@ const inputStyle = { width: "100%", background: T.bg, border: `1px solid ${T.car
 const labelMuted = { fontSize: 11, color: T.ivoryMuted };
 
 if (completado) {
-const codigoQR = `MISKI-${reserva.id}-${domoSel}`;
+// Diálogo con Huésped: el QR y el botón de WhatsApp llevan al huésped
+// a su carta (huesped.html?c=CODIGO) para pedir desde su celular.
+const linkHuesped = codigoHuesped
+? `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, "")}huesped.html?c=${codigoHuesped}`
+: null;
+const codigoQR = linkHuesped || `MISKI-${reserva.id}-${domoSel}`;
+const primerNombre = (nombre || "").trim().split(/\s+/)[0] || "";
+const mensajeCarta = linkHuesped
+? `¡Bienvenido/a a Miski Samay${primerNombre ? ", " + primerNombre : ""}! 🌿 Desde este enlace puede pedir comida, bebidas y experiencias directo a su domo ${domoSel}: ${linkHuesped}\n\nWelcome! Order food, drinks and experiences to your dome here: ${linkHuesped}`
+: "";
+let telefono = (celular || "").replace(/\D/g, "");
+if (telefono.length === 9 && telefono.startsWith("9")) telefono = "51" + telefono;
+const linkWhatsapp = linkHuesped ? `https://wa.me/${telefono}?text=${encodeURIComponent(mensajeCarta)}` : null;
 return (
 <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
 <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 32, maxWidth: 420, textAlign: "center" }}>
 <div style={{ color: T.green, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Check-in completado</div>
 <div style={{ fontSize: 13, color: T.ivoryMuted, marginBottom: 20 }}>{nombre} · Domo {domoSel}</div>
 <QRSimulado texto={codigoQR} />
+{linkHuesped ? (
+<div style={{ marginTop: 12 }}>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>Carta del huésped · código {codigoHuesped}</div>
+<a href={linkWhatsapp} target="_blank" rel="noopener" style={{ display: "block", background: "#25D366", color: "#0B2915", borderRadius: 10, padding: "11px 12px", fontSize: 14, fontWeight: 700, textDecoration: "none" }}>📲 Enviar carta por WhatsApp</a>
+<button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(linkHuesped).then(() => { setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000); }); }} style={{ marginTop: 8, width: "100%", background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 10, padding: "9px 12px", fontSize: 12.5, cursor: "pointer" }}>{linkCopiado ? "✓ Link copiado" : "Copiar link"}</button>
+</div>
+) : (
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>{codigoQR}</div>
+)}
 <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Total estadía (US$)</span><span>US$ {fmt(totales.totalUsd)}</span></div>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Adelanto pagado (US$)</span><span>US$ {fmt(Number(adelantoPagado) || 0)}</span></div>
@@ -306,6 +358,25 @@ return (
 </div>
 <span style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 8, background: "rgba(184,136,115,0.15)", color: T.amber }}>Por confirmar</span>
 </div>
+
+{prellegada && (
+<div style={{ background: "rgba(107,143,113,0.12)", border: "1px solid rgba(107,143,113,0.4)", borderRadius: 12, padding: 14, marginBottom: 16, fontSize: 12.5 }}>
+<div style={{ color: T.green, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+✓ El huésped confirmó sus datos{prellegada.confirmadoEn ? ` el ${new Date(prellegada.confirmadoEn).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+</div>
+<div style={{ color: T.ivoryMuted, marginBottom: 6 }}>Ya están cargados abajo — revísalos con su documento antes de completar el check-in.</div>
+{prellegada.horaLlegada && <div>🕒 Llegada estimada: {prellegada.horaLlegada}</div>}
+{Array.isArray(prellegada.acompanantes) && prellegada.acompanantes.length > 0 && (
+<div style={{ marginTop: 4 }}>
+👥 Acompañantes (se guardan solos al completar el check-in):
+{prellegada.acompanantes.map((a, i) => (
+<div key={i} style={{ paddingLeft: 18, color: T.ivory }}>{a.nombreCompleto}{a.numeroDocumento ? ` · ${a.tipoDocumento || ""} ${a.numeroDocumento}` : ""}</div>
+))}
+</div>
+)}
+{prellegada.comentario && <div style={{ marginTop: 4 }}>💬 “{prellegada.comentario}”</div>}
+</div>
+)}
 
 <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Datos del huésped</div>
