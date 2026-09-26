@@ -204,6 +204,19 @@ useEffect(() => {
 if (!categoriaActiva && categorias.length > 0) setCategoriaActiva(categorias[0]);
 }, [categorias.join(",")]);
 
+// Diálogo con Huésped: qué productos se le sugieren primero al huésped
+// en su carta del celular (máximo 5 por grupo). Si un grupo no tiene
+// ninguno marcado, la carta usa una lista por defecto (sopas/dieta para
+// "ligero"; pollo a la brasa, pizza, lomo saltado, trucha para "cena").
+async function cambiarRecomendacion(producto, valor) {
+try {
+await apiPut(`/api/productos/${producto.id}/recomendacion`, { recomendacion: valor || null });
+recargar();
+} catch (err) {
+alert("No se pudo guardar la recomendación: " + err.message);
+}
+}
+
 async function alternarVisible(producto) {
 try {
 await apiPut(`/api/productos/${producto.id}`, { activo: !producto.activo });
@@ -225,7 +238,10 @@ return (
 <div style={{ maxWidth: 900, margin: "0 auto" }}>
 <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 24px" }}>
+<div>
 <h1 style={{ fontSize: 22, margin: 0 }}>Editar menú — Restaurant y Bar</h1>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 4 }}>⭐ Marca hasta 5 productos por grupo para que aparezcan primero en la carta que ve el huésped en su celular.</div>
+</div>
 {!editando && (
 <button onClick={() => setEditando({})} style={{
 background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
@@ -291,6 +307,14 @@ opacity: p.activo ? 1 : 0.5,
 </div>
 <div style={{ fontSize: 13.5, color: T.gold, fontWeight: 700, flexShrink: 0 }}>S/ {Number(p.precio).toFixed(2)}</div>
 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+{!["lavanderia", "desayuno", "frigobar"].includes(String(p.categoria).toLowerCase()) && <select value={p.recomendacion || ""} onChange={(e) => cambiarRecomendacion(p, e.target.value)} title="Sugerir este producto al huésped en su carta del celular" style={{
+background: p.recomendacion ? "rgba(201,162,75,0.15)" : "transparent", color: p.recomendacion ? T.gold : T.ivoryMuted,
+border: `1px solid ${p.recomendacion ? T.gold : T.cardBorder}`, borderRadius: 8, padding: "6px 8px", fontSize: 12, cursor: "pointer",
+}}>
+<option value="">☆ No recomendar</option>
+<option value="ligero">⭐ Recomendado: algo ligero</option>
+<option value="cena">⭐ Recomendado: cena</option>
+</select>}
 <button onClick={() => setEditando(p)} style={{
 background: "transparent", border: `1px solid ${T.cardBorder}`, color: T.ivory,
 borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer",
