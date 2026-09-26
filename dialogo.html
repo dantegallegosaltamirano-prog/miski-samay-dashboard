@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Diálogo con Huésped</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+// =====================================================================
+// DIÁLOGO CON HUÉSPED (25 set, pedido de Dante)
+// Recepción manda al huésped, con un clic, un link de WhatsApp:
+//   1. ANTES de llegar → formulario para confirmar sus datos y los de
+//      sus acompañantes (se usan para pre-llenar el check-in).
+//   2. YA ALOJADO (check-in hecho, domo asignado) → la carta para pedir
+//      desde su celular.
+// Los pedidos del huésped llegan aquí "por confirmar": NADA se carga a la
+// cuenta hasta que alguien del staff lo acepta. Al aceptar, se vuelve un
+// consumo normal (comida/bebida pasa a Actividad en Vivo para preparar).
+// =====================================================================
+const { useState, useEffect, useCallback } = React;
+
+const T = {
+bg: "#0E0D0F", bgElevated: "#17151A", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71", red: "#A83E32", amber: "#B88873",
+wa: "#25D366",
+};
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
+const REFRESH_MS = 30000;
+
+function cargarSesion() {
+try { const raw = localStorage.getItem(SESION_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+async function apiGet(path) {
+const res = await fetch(`${API_BASE_URL}${path}`);
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
+}
+async function apiPost(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+let data = null;
+try { data = await res.json(); } catch {}
+if (!res.ok) throw new Error((data && data.error) || `${path} respondió ${res.status}`);
+return data;
+}
+
+function soles(n) { return "S/ " + (Number(n) || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fechaCorta(iso, hoy) {
+if (!iso) return "";
+const f = String(iso).slice(0, 10);
+if (hoy && f === hoy) return "Hoy";
+if (hoy) {
+const man = new Date(hoy + "T12:00:00"); man.setDate(man.getDate() + 1);
+if (f === man.toISOString().slice(0, 10)) return "Mañana";
+}
+return new Date(f + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
+}
+function haceCuanto(iso) {
+const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+if (min < 1) return "recién";
+if (min < 60) return `hace ${min} min`;
+const h = Math.floor(min / 60);
+return h < 24 ? `hace ${h} h ${min % 60} min` : new Date(iso).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+function linkHuesped(codigo) {
+return `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, "")}huesped.html?c=${codigo}`;
+}
+function telefonoWhatsapp(tel) {
+let d = String(tel || "").replace(/\D/g, "");
+if (d.length === 9 && d.startsWith("9")) d = "51" + d; // celular peruano sin código de país
+return d;
+}
+function primerNombre(n) {
+if (!n || n === "Por confirmar en check-in") return "";
+return String(n).trim().split(/\s+/)[0];
+}
+function mensajeFormulario(r, link) {
+const n = primerNombre(r.nombre_completo);
+const f = fechaCorta(r.fecha_llegada);
+return `Hola${n ? " " + n : ""} 👋, le saluda Miski Samay Domo Boutique. Para agilizar su llegada (${f}), por favor confirme sus datos y los de sus acompañantes aquí: ${link}\n\nHello${n ? " " + n : ""}! To speed up your check-in, please confirm your details here: ${link}`;
+}
+function mensajeCarta(r, link) {
+const n = primerNombre(r.nombre_completo);
+return `¡Bienvenido/a a Miski Samay${n ? ", " + n : ""}! 🌿 Desde este enlace puede pedir comida, bebidas y experiencias directo a su domo ${r.domo || ""}: ${link}\n\nWelcome! Order food, drinks and experiences to your dome here: ${link}`;
+}
+
+// ---------------------------------------------------------------------
+function TarjetaPedido({ pedido, sesion, alTerminar }) {
+const [rechazando, setRechazando] = useState(false);
+const [motivo, setMotivo] = useState("");
+const [ocupado, setOcupado] = useState(false);
+const items = Array.isArray(pedido.items) ? pedido.items : [];
+const total = items.reduce((s, it) => s + Number(it.precio) * Number(it.cantidad), 0);
+
+async function aceptar() {
+setOcupado(true);
+try { await apiPost(`/api/pedidos-huesped/${pedido.id}/aceptar`, { staffId: sesion.id || null }); alTerminar(); }
+catch (e) { alert("No se pudo aceptar: " + e.message); setOcupado(false); }
+}
+async function rechazar() {
+setOcupado(true);
+try { await apiPost(`/api/pedidos-huesped/${pedido.id}/rechazar`, { staffId: sesion.id || null, motivo: motivo.trim() || null }); alTerminar(); }
+catch (e) { alert("No se pudo marcar: " + e.message); setOcupado(false); }
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid rgba(201,162,75,0.45)`, borderRadius: 14, padding: 16 }}>
+<div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+<div>
+<div style={{ fontSize: 15, fontWeight: 600 }}><span style={{ color: T.gold }}>{pedido.domo || "—"}</span> · {pedido.nombre_completo}</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted }}>📱 Pedido desde su celular · {haceCuanto(pedido.creado_en)}</div>
+</div>
+<div style={{ fontSize: 16, fontWeight: 700, color: T.gold, whiteSpace: "nowrap" }}>{soles(total)}</div>
+</div>
+<div style={{ borderTop: `1px solid ${T.cardBorder}`, paddingTop: 8 }}>
+{items.map((it, i) => (
+<div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0" }}>
+<span>{it.cantidad} × {it.nombre}</span><span style={{ color: T.ivoryMuted }}>{soles(Number(it.precio) * Number(it.cantidad))}</span>
+</div>
+))}
+{pedido.nota && <div style={{ fontSize: 13, color: T.amber, marginTop: 6 }}>💬 “{pedido.nota}”</div>}
+</div>
+{!rechazando ? (
+<div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+<button disabled={ocupado} onClick={aceptar} style={{ flex: 2, background: T.gold, color: "#1C1A20", border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+{ocupado ? "Guardando…" : "✓ Aceptar y cargar a su cuenta"}
+</button>
+<button disabled={ocupado} onClick={() => setRechazando(true)} style={{ flex: 1, background: "transparent", color: "#D98A7D", border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, cursor: "pointer" }}>
+✕ No disponible
+</button>
+</div>
+) : (
+<div style={{ marginTop: 12 }}>
+<input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo que verá el huésped (opcional). Ej: se acabó la trucha"
+style={{ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "9px 10px", fontSize: 13, marginBottom: 8 }} />
+<div style={{ display: "flex", gap: 8 }}>
+<button disabled={ocupado} onClick={rechazar} style={{ flex: 1, background: T.red, color: "#fff", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Confirmar: no disponible</button>
+<button disabled={ocupado} onClick={() => setRechazando(false)} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: "9px 12px", fontSize: 13, cursor: "pointer" }}>Volver</button>
+</div>
+</div>
+)}
+<div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 8 }}>Al aceptar, la comida y bebida pasa a Actividad en Vivo para prepararse.</div>
+</div>
+);
+}
+
+// ---------------------------------------------------------------------
+function FilaHuesped({ r, hoy, tipo, recargar }) {
+// tipo: "llegada" (manda formulario) | "alojado" (manda carta)
+const datos = r.datos_prellegada || null;
+const [telefono, setTelefono] = useState(r.whatsapp || (datos && datos.celular) || "");
+const [codigo, setCodigo] = useState(r.codigo_huesped || null);
+const [verDatos, setVerDatos] = useState(false);
+const [copiado, setCopiado] = useState(false);
+
+async function asegurarCodigo() {
+if (codigo) return codigo;
+const d = await apiPost(`/api/reservas/${r.id}/codigo-huesped`);
+setCodigo(d.codigo);
+return d.codigo;
+}
+async function enviarWhatsapp() {
+// Se abre la ventana en el mismo clic (si se abre después de esperar
+// al servidor, el celular la bloquea como "ventana emergente").
+const ventana = window.open("", "_blank");
+try {
+const c = await asegurarCodigo();
+const link = linkHuesped(c);
+const texto = tipo === "alojado" ? mensajeCarta(r, link) : mensajeFormulario(r, link);
+const url = `https://wa.me/${telefonoWhatsapp(telefono)}?text=${encodeURIComponent(texto)}`;
+if (ventana) ventana.location.href = url; else window.location.href = url;
+} catch (e) {
+if (ventana) ventana.close();
+alert("No se pudo preparar el link: " + e.message);
+}
+}
+async function copiarLink() {
+try {
+const c = await asegurarCodigo();
+await navigator.clipboard.writeText(linkHuesped(c));
+setCopiado(true); setTimeout(() => setCopiado(false), 2000);
+} catch (e) { alert("No se pudo copiar: " + e.message); }
+}
+
+const nombre = r.nombre_completo && r.nombre_completo !== "Por confirmar en check-in" ? r.nombre_completo : null;
+const confirmado = !!r.datos_prellegada_en;
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14 }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+<div style={{ minWidth: 0 }}>
+<div style={{ fontSize: 14.5, fontWeight: 600 }}>
+{tipo === "alojado" && <span style={{ color: T.gold }}>{r.domo} · </span>}
+{nombre || (datos && datos.nombreCompleto) || <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>Huésped por confirmar</span>}
+</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+{r.canal_origen} · {tipo === "alojado" ? `sale ${fechaCorta(r.fecha_salida, hoy)}` : `llega ${fechaCorta(r.fecha_llegada, hoy)}`}
+{r.pedidos_por_confirmar > 0 && <span style={{ color: T.gold }}> · {r.pedidos_por_confirmar} pedido(s) por confirmar</span>}
+</div>
+</div>
+{tipo === "llegada" && (
+confirmado ? (
+<button onClick={() => setVerDatos((v) => !v)} style={{ background: "rgba(107,143,113,0.15)", color: T.green, border: "1px solid rgba(107,143,113,0.4)", borderRadius: 999, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+✓ Datos confirmados {verDatos ? "▴" : "▾"}
+</button>
+) : (
+<span style={{ background: "rgba(184,136,115,0.15)", color: T.amber, borderRadius: 999, padding: "4px 10px", fontSize: 11.5 }}>Sin confirmar</span>
+)
+)}
+</div>
+
+{verDatos && datos && (
+<div style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 10, marginTop: 10, fontSize: 12.5, lineHeight: 1.6 }}>
+<div><b>{datos.nombreCompleto}</b> · {datos.tipoDocumento} {datos.numeroDocumento}</div>
+<div style={{ color: T.ivoryMuted }}>{[datos.pais, datos.celular, datos.correo].filter(Boolean).join(" · ")}</div>
+{datos.horaLlegada && <div>🕒 Llega: {datos.horaLlegada}</div>}
+{(datos.acompanantes || []).map((a, i) => <div key={i}>👤 {a.nombreCompleto}{a.numeroDocumento ? ` · ${a.tipoDocumento || ""} ${a.numeroDocumento}` : ""}</div>)}
+{datos.comentario && <div style={{ color: T.amber }}>💬 “{datos.comentario}”</div>}
+</div>
+)}
+
+<div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+<input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Celular (con código de país)" inputMode="tel"
+style={{ flex: "1 1 170px", minWidth: 0, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 13 }} />
+<button onClick={enviarWhatsapp} style={{ background: T.wa, color: "#0B2915", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+📲 {tipo === "alojado" ? "Enviar carta" : (confirmado ? "Reenviar formulario" : "Enviar formulario")}
+</button>
+<button onClick={copiarLink} style={{ background: "transparent", color: T.ivory, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 10px", fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>
+{copiado ? "✓ Copiado" : "Copiar link"}
+</button>
+{tipo === "llegada" && (
+<a href={`checkin.html?id=${r.id}`} style={{ color: T.gold, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap", marginLeft: "auto" }}>Hacer check-in →</a>
+)}
+</div>
+{!telefono && <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 6 }}>Sin celular: WhatsApp te pedirá elegir el contacto.</div>}
+</div>
+);
+}
+
+// ---------------------------------------------------------------------
+function PantallaDialogo({ sesion }) {
+const [lista, setLista] = useState(null);
+const [hoy, setHoy] = useState(null);
+const [pedidos, setPedidos] = useState([]);
+const [error, setError] = useState(null);
+
+const cargar = useCallback(async () => {
+try {
+const [d, p] = await Promise.all([apiGet("/api/dialogo/reservas"), apiGet("/api/pedidos-huesped/pendientes")]);
+setLista(d.reservas || []); setHoy(d.hoy); setPedidos(Array.isArray(p) ? p : []); setError(null);
+} catch (e) {
+setError("No se pudo conectar con el servidor.");
+}
+}, []);
+useEffect(() => { cargar(); const iv = setInterval(cargar, REFRESH_MS); return () => clearInterval(iv); }, [cargar]);
+
+const llegadas = (lista || []).filter((r) => r.estado === "confirmada");
+const alojados = (lista || []).filter((r) => r.estado === "check_in");
+const titulo = (txt, n, sub) => (
+<div style={{ margin: "26px 0 10px" }}>
+<div style={{ fontSize: 15, fontWeight: 600 }}>{txt} <span style={{ color: T.ivoryMuted, fontWeight: 400 }}>({n})</span></div>
+{sub && <div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>{sub}</div>}
+</div>
+);
+
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", padding: "28px 20px 48px" }}>
+<div style={{ maxWidth: 860, margin: "0 auto" }}>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+<h1 style={{ fontSize: 22, margin: "10px 0 4px" }}>💬 Diálogo con Huésped</h1>
+<div style={{ fontSize: 12.5, color: T.ivoryMuted }}>Antes de llegar: el huésped confirma sus datos. Ya alojado: pide desde su celular. Todo pasa por aquí antes de cargarse a la cuenta.</div>
+
+{error && <div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginTop: 16 }}>⚠ {error}</div>}
+{lista === null && !error && <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 40 }}>Cargando…</div>}
+
+{lista !== null && (
+<React.Fragment>
+{titulo("Pedidos de huéspedes por confirmar", pedidos.length, pedidos.length ? "Revisa disponibilidad y acepta — recién ahí se suma a su cuenta." : null)}
+{pedidos.length === 0 ? (
+<div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 12, padding: 16, fontSize: 12.5, textAlign: "center" }}>No hay pedidos esperando. Se revisa solo cada 30 segundos.</div>
+) : (
+<div style={{ display: "grid", gap: 10 }}>{pedidos.map((p) => <TarjetaPedido key={p.id} pedido={p} sesion={sesion} alTerminar={cargar} />)}</div>
+)}
+
+{titulo("Por llegar — enviar formulario de datos", llegadas.length, "Llegadas de hoy a 7 días que todavía no tienen check-in.")}
+{llegadas.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 12.5 }}>No hay llegadas próximas sin check-in.</div>
+) : (
+<div style={{ display: "grid", gap: 10 }}>{llegadas.map((r) => <FilaHuesped key={r.id} r={r} hoy={hoy} tipo="llegada" recargar={cargar} />)}</div>
+)}
+
+{titulo("Alojados ahora — enviar carta", alojados.length, "Huéspedes con check-in hecho. La carta también se puede enviar al terminar el check-in.")}
+{alojados.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 12.5 }}>No hay huéspedes alojados.</div>
+) : (
+<div style={{ display: "grid", gap: 10 }}>{alojados.map((r) => <FilaHuesped key={r.id} r={r} hoy={hoy} tipo="alojado" recargar={cargar} />)}</div>
+)}
+</React.Fragment>
+)}
+</div>
+</div>
+);
+}
+
+function AppGate() {
+const sesion = cargarSesion();
+if (!sesion) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>Primero debes iniciar sesión.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Ir al panel principal</a>
+</div>
+);
+}
+return <PantallaDialogo sesion={sesion} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
+</script>
+</body>
+</html>
