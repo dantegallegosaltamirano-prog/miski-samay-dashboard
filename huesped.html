@@ -1,0 +1,700 @@
+// Página del huésped — Miski Samay (Diálogo con Huésped, 25 set).
+// Se abre desde el link que recepción manda por WhatsApp:
+//   huesped.html?c=CODIGO
+// Antes de llegar: confirmar datos (titular + acompañantes).
+// Con el check-in hecho (domo asignado): carta con recomendados y pedidos.
+// Este archivo es la FUENTE (JSX). huesped.html lleva el mismo código ya
+// compilado a JavaScript normal, para que cargue rápido en el celular del
+// huésped (sin el compilador Babel de ~3 MB que usan las pantallas del staff).
+
+const { useState, useEffect, useMemo, useCallback } = React;
+
+const API = "https://miski-samay-backend-production.up.railway.app";
+const WHATSAPP_HOTEL = ""; // opcional: número de recepción para "¿Dudas?"; vacío = no se muestra
+
+const C = {
+  bg: "#F5F0E6", card: "#FFFFFF", line: "#E6DDCB", ink: "#221F1A", muted: "#766E61",
+  gold: "#A9812F", goldSoft: "#F1E6CC", green: "#4F7457", greenSoft: "#E3EDE4",
+  red: "#9C3B2F", redSoft: "#F5E1DD", dark: "#1C1A20",
+};
+
+/*__PAISES__*/
+
+const TXT = {
+  es: {
+    cargando: "Cargando…",
+    enlaceInvalido: "Este enlace no es válido o ya venció.",
+    enlaceInvalidoSub: "Escríbenos por WhatsApp y te ayudamos.",
+    sinConexion: "No pudimos conectarnos. Revisa tu internet e intenta de nuevo.",
+    reintentar: "Reintentar",
+    hola: (n) => (n ? `Hola, ${n.split(" ")[0]}` : "Hola"),
+    teEsperamos: (f) => `Te esperamos el ${f}`,
+    introDatos: "Para que tu llegada sea rápida, confirma tus datos y los de quienes te acompañan. Toma 1 minuto.",
+    tusDatos: "Tus datos",
+    nombre: "Nombre completo (como en tu documento)",
+    tipoDoc: "Tipo de documento",
+    elegir: "Elegir…",
+    dni: "DNI", pasaporte: "Pasaporte", ce: "Carné de extranjería",
+    numDoc: "Número de documento",
+    pais: "País",
+    elegirPais: "Elige tu país",
+    celular: "Celular / WhatsApp",
+    correo: "Correo electrónico",
+    horaLlegada: "¿A qué hora llegas, aprox.?",
+    horas: ["Antes de 12:00", "12:00 – 15:00", "15:00 – 18:00", "18:00 – 21:00", "Después de 21:00"],
+    acompanantes: "Acompañantes",
+    sinAcompanantes: "¿Viajas con alguien? Agrégalo aquí.",
+    agregarAcomp: "+ Agregar acompañante",
+    quitar: "Quitar",
+    acompN: (i) => `Acompañante ${i}`,
+    comentario: "¿Algo que debamos saber? (opcional)",
+    comentarioPh: "Alergias, una celebración, llegada tarde…",
+    confirmar: "Confirmar mis datos",
+    enviando: "Enviando…",
+    faltan: "Completa nombre, documento y celular para continuar.",
+    listo: "¡Listo, tus datos están confirmados!",
+    listoSub: "Gracias. Cuando llegues y te asignemos tu domo, por este mismo enlace podrás pedir comida, bebidas y experiencias.",
+    editar: "Corregir mis datos",
+    resumenAcomp: (n) => (n === 0 ? "Sin acompañantes" : n === 1 ? "1 acompañante" : `${n} acompañantes`),
+    domo: (d) => `Domo ${d}`,
+    introCarta: "Pide desde aquí y te lo llevamos. Lo confirmamos en unos minutos.",
+    ligero: "Algo ligero para empezar",
+    ligeroSub: "Ideal si llegas cansado del viaje",
+    cena: "Nuestras recomendaciones para la cena",
+    cenaSub: "Los favoritos de la casa",
+    verCarta: "Ver la carta completa",
+    ocultarCarta: "Ocultar la carta completa",
+    agregar: "Agregar",
+    verPedido: "Ver mi pedido",
+    tuPedido: "Tu pedido",
+    nota: "Indicaciones (opcional)",
+    notaPh: "Ej: sin picante, con hielo…",
+    total: "Total",
+    avisoCargo: "Se suma a tu cuenta cuando lo confirmemos. Lo pagas al hacer check-out.",
+    enviarPedido: "Enviar pedido",
+    seguirViendo: "Seguir viendo",
+    pedidoRecibido: "¡Pedido recibido!",
+    pedidoRecibidoSub: "En unos minutos lo confirmamos. Puedes ver el estado aquí abajo.",
+    misPedidos: "Mis pedidos",
+    estado: { por_confirmar: "Por confirmar", aceptado: "Confirmado", rechazado: "No disponible" },
+    gracias: "¡Gracias por tu visita!",
+    graciasSub: "Esperamos verte pronto en Miski Samay.",
+    categoria: (c) => ({ gastronomia: "Restaurante", bebidas: "Bar", transporte: "Experiencias y traslados" }[String(c).toLowerCase()] || (c.charAt(0).toUpperCase() + c.slice(1))),
+    errorEnviar: "No se pudo enviar. Intenta de nuevo.",
+  },
+  en: {
+    cargando: "Loading…",
+    enlaceInvalido: "This link is not valid or has expired.",
+    enlaceInvalidoSub: "Message us on WhatsApp and we'll help you.",
+    sinConexion: "We couldn't connect. Check your internet and try again.",
+    reintentar: "Try again",
+    hola: (n) => (n ? `Hello, ${n.split(" ")[0]}` : "Hello"),
+    teEsperamos: (f) => `We look forward to seeing you on ${f}`,
+    introDatos: "To make your arrival quick, please confirm your details and those of your companions. It takes 1 minute.",
+    tusDatos: "Your details",
+    nombre: "Full name (as on your ID)",
+    tipoDoc: "Document type",
+    elegir: "Choose…",
+    dni: "DNI (Peru)", pasaporte: "Passport", ce: "Foreigner ID card (CE)",
+    numDoc: "Document number",
+    pais: "Country",
+    elegirPais: "Choose your country",
+    celular: "Mobile / WhatsApp",
+    correo: "Email",
+    horaLlegada: "Approximate arrival time",
+    horas: ["Before 12:00", "12:00 – 15:00", "15:00 – 18:00", "18:00 – 21:00", "After 21:00"],
+    acompanantes: "Companions",
+    sinAcompanantes: "Travelling with someone? Add them here.",
+    agregarAcomp: "+ Add companion",
+    quitar: "Remove",
+    acompN: (i) => `Companion ${i}`,
+    comentario: "Anything we should know? (optional)",
+    comentarioPh: "Allergies, a celebration, late arrival…",
+    confirmar: "Confirm my details",
+    enviando: "Sending…",
+    faltan: "Please fill in name, document and mobile to continue.",
+    listo: "All set, your details are confirmed!",
+    listoSub: "Thank you. Once you arrive and we assign your dome, you can order food, drinks and experiences from this same link.",
+    editar: "Edit my details",
+    resumenAcomp: (n) => (n === 0 ? "No companions" : n === 1 ? "1 companion" : `${n} companions`),
+    domo: (d) => `Dome ${d}`,
+    introCarta: "Order from here and we'll bring it to you. We'll confirm in a few minutes.",
+    ligero: "Something light to start",
+    ligeroSub: "Perfect after a long trip",
+    cena: "Our dinner recommendations",
+    cenaSub: "House favourites",
+    verCarta: "See the full menu",
+    ocultarCarta: "Hide the full menu",
+    agregar: "Add",
+    verPedido: "View my order",
+    tuPedido: "Your order",
+    nota: "Special requests (optional)",
+    notaPh: "E.g. not spicy, with ice…",
+    total: "Total",
+    avisoCargo: "It's added to your bill once we confirm it. You pay at check-out.",
+    enviarPedido: "Send order",
+    seguirViendo: "Keep browsing",
+    pedidoRecibido: "Order received!",
+    pedidoRecibidoSub: "We'll confirm it in a few minutes. You can follow its status below.",
+    misPedidos: "My orders",
+    estado: { por_confirmar: "Awaiting confirmation", aceptado: "Confirmed", rechazado: "Not available" },
+    gracias: "Thank you for staying with us!",
+    graciasSub: "We hope to see you again at Miski Samay.",
+    categoria: (c) => ({ gastronomia: "Restaurant", bebidas: "Bar", transporte: "Experiences & transfers" }[String(c).toLowerCase()] || (c.charAt(0).toUpperCase() + c.slice(1))),
+    errorEnviar: "Couldn't send. Please try again.",
+  },
+};
+
+function idiomaInicial() {
+  try {
+    const guardado = localStorage.getItem("ms_huesped_idioma");
+    if (guardado === "es" || guardado === "en") return guardado;
+  } catch (e) {}
+  const nav = (navigator.language || "es").toLowerCase();
+  return nav.startsWith("es") ? "es" : "en";
+}
+
+function fechaBonita(iso, lang) {
+  if (!iso) return "";
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return d.toLocaleDateString(lang === "es" ? "es-PE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+}
+function soles(n) {
+  return "S/ " + (Number(n) || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const err = new Error((data && data.error) || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ---------- piezas visuales ----------
+function Marca() {
+  return (
+    <div style={{ textAlign: "center", padding: "22px 0 6px" }}>
+      <svg width="34" height="34" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <path d="M15 4 C8 4 3.5 10 3.5 21 H26.5 C26.5 10 22 4 15 4 Z" stroke={C.gold} strokeWidth="1.2" fill="none" />
+        <path d="M11.5 21 V16 C11.5 13.8 13.1 12.5 15 12.5 C16.9 12.5 18.5 13.8 18.5 16 V21" stroke={C.gold} strokeWidth="1.1" fill="none" />
+      </svg>
+      <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 22, letterSpacing: 3, color: C.ink, marginTop: 2 }}>MISKI SAMAY</div>
+      <div style={{ fontSize: 10, letterSpacing: 3, color: C.gold }}>DOMO BOUTIQUE · URUBAMBA</div>
+    </div>
+  );
+}
+
+function SelectorIdioma({ lang, setLang }) {
+  const b = (code, label) => (
+    <button onClick={() => setLang(code)} aria-pressed={lang === code} style={{
+      border: "none", background: lang === code ? C.ink : "transparent", color: lang === code ? "#fff" : C.muted,
+      borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+    }}>{label}</button>
+  );
+  return (
+    <div style={{ position: "absolute", top: 12, right: 12, background: C.card, border: `1px solid ${C.line}`, borderRadius: 999, padding: 2, display: "flex" }}>
+      {b("es", "ES")}{b("en", "EN")}
+    </div>
+  );
+}
+
+function Tarjeta({ children, style }) {
+  return <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, padding: 18, marginBottom: 14, ...style }}>{children}</div>;
+}
+
+const inputBase = {
+  width: "100%", background: "#FBF8F2", border: `1px solid ${C.line}`, borderRadius: 12, color: C.ink,
+  padding: "12px 12px", fontSize: 16, outline: "none", fontFamily: "inherit",
+};
+function Campo({ label, children }) {
+  return (
+    <label style={{ display: "block", marginBottom: 12 }}>
+      <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 5 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function BotonPrincipal({ children, onClick, disabled, style }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: "100%", border: "none", borderRadius: 14, padding: "15px 16px", fontSize: 16, fontWeight: 700,
+      background: disabled ? "#CFC6B5" : C.dark, color: "#fff", cursor: disabled ? "default" : "pointer", ...style,
+    }}>{children}</button>
+  );
+}
+
+function Stepper({ cantidad, onMenos, onMas }) {
+  const b = (txt, fn, label) => (
+    <button onClick={fn} aria-label={label} style={{
+      width: 34, height: 34, borderRadius: 999, border: `1px solid ${C.line}`, background: "#fff",
+      fontSize: 18, lineHeight: "30px", color: C.ink, cursor: "pointer", padding: 0,
+    }}>{txt}</button>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {b("−", onMenos, "menos")}
+      <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700 }}>{cantidad}</span>
+      {b("+", onMas, "más")}
+    </div>
+  );
+}
+
+// ---------- paso 1: confirmar datos ----------
+function FormularioDatos({ t, codigo, inicial, alGuardar }) {
+  const [f, setF] = useState(() => ({
+    nombreCompleto: inicial?.nombreCompleto || "",
+    tipoDocumento: inicial?.tipoDocumento || "",
+    numeroDocumento: inicial?.numeroDocumento || "",
+    pais: inicial?.pais || "",
+    celular: inicial?.celular || "",
+    correo: inicial?.correo || "",
+    horaLlegada: inicial?.horaLlegada || "",
+    comentario: inicial?.comentario || "",
+  }));
+  const [acomp, setAcomp] = useState(() => (inicial?.acompanantes || []).map((a) => ({ ...a })));
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
+
+  function setAc(i, k, v) { setAcomp((prev) => prev.map((a, j) => (j === i ? { ...a, [k]: v } : a))); }
+
+  async function enviar() {
+    if (!f.nombreCompleto.trim() || !f.tipoDocumento || !f.numeroDocumento.trim() || !f.celular.trim()) {
+      setError(t.faltan);
+      return;
+    }
+    setEnviando(true); setError(null);
+    try {
+      await api(`/api/huesped/${codigo}/datos`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...f, acompanantes: acomp.filter((a) => (a.nombreCompleto || "").trim()) }),
+      });
+      alGuardar();
+    } catch (e) {
+      setError(t.errorEnviar);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const selDoc = (valor, onChange) => (
+    <select value={valor} onChange={onChange} style={inputBase}>
+      <option value="">{t.elegir}</option>
+      <option value="Pasaporte">{t.pasaporte}</option>
+      <option value="DNI">{t.dni}</option>
+      <option value="CE">{t.ce}</option>
+    </select>
+  );
+
+  return (
+    <div>
+      <Tarjeta>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>{t.tusDatos}</div>
+        <Campo label={t.nombre}><input style={inputBase} value={f.nombreCompleto} onChange={set("nombreCompleto")} autoComplete="name" /></Campo>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Campo label={t.tipoDoc}>{selDoc(f.tipoDocumento, set("tipoDocumento"))}</Campo>
+          <Campo label={t.numDoc}><input style={inputBase} value={f.numeroDocumento} onChange={set("numeroDocumento")} /></Campo>
+        </div>
+        <Campo label={t.pais}>
+          <select style={inputBase} value={f.pais} onChange={set("pais")}>
+            <option value="">{t.elegirPais}</option>
+            {PAISES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Campo>
+        <Campo label={t.celular}><input style={inputBase} value={f.celular} onChange={set("celular")} inputMode="tel" autoComplete="tel" placeholder="+51 …" /></Campo>
+        <Campo label={t.correo}><input style={inputBase} value={f.correo} onChange={set("correo")} inputMode="email" autoComplete="email" /></Campo>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 7 }}>{t.horaLlegada}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {t.horas.map((h, i) => {
+            const valor = TXT.es.horas[i]; // se guarda siempre en español para recepción
+            const activo = f.horaLlegada === valor;
+            return (
+              <button key={valor} onClick={() => setF((p) => ({ ...p, horaLlegada: activo ? "" : valor }))} style={{
+                border: `1px solid ${activo ? C.gold : C.line}`, background: activo ? C.goldSoft : "#fff", color: C.ink,
+                borderRadius: 999, padding: "8px 12px", fontSize: 13, cursor: "pointer",
+              }}>{h}</button>
+            );
+          })}
+        </div>
+      </Tarjeta>
+
+      <Tarjeta>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t.acompanantes}</div>
+        {acomp.length === 0 && <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 10 }}>{t.sinAcompanantes}</div>}
+        {acomp.map((a, i) => (
+          <div key={i} style={{ borderTop: i === 0 ? "none" : `1px solid ${C.line}`, paddingTop: i === 0 ? 6 : 12, marginTop: i === 0 ? 0 : 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>{t.acompN(i + 1)}</span>
+              <button onClick={() => setAcomp((prev) => prev.filter((_, j) => j !== i))} style={{ border: "none", background: "none", color: C.red, fontSize: 13, cursor: "pointer" }}>{t.quitar}</button>
+            </div>
+            <Campo label={t.nombre}><input style={inputBase} value={a.nombreCompleto || ""} onChange={(e) => setAc(i, "nombreCompleto", e.target.value)} /></Campo>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Campo label={t.tipoDoc}>{selDoc(a.tipoDocumento || "", (e) => setAc(i, "tipoDocumento", e.target.value))}</Campo>
+              <Campo label={t.numDoc}><input style={inputBase} value={a.numeroDocumento || ""} onChange={(e) => setAc(i, "numeroDocumento", e.target.value)} /></Campo>
+            </div>
+          </div>
+        ))}
+        {acomp.length < 10 && (
+          <button onClick={() => setAcomp((prev) => [...prev, { nombreCompleto: "", tipoDocumento: "", numeroDocumento: "" }])} style={{
+            width: "100%", border: `1px dashed ${C.gold}`, background: "transparent", color: C.gold, borderRadius: 12,
+            padding: "11px", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
+          }}>{t.agregarAcomp}</button>
+        )}
+      </Tarjeta>
+
+      <Tarjeta>
+        <Campo label={t.comentario}>
+          <textarea style={{ ...inputBase, minHeight: 72, resize: "vertical" }} value={f.comentario} onChange={set("comentario")} placeholder={t.comentarioPh} />
+        </Campo>
+      </Tarjeta>
+
+      {error && <div role="alert" style={{ background: C.redSoft, color: C.red, borderRadius: 12, padding: "10px 12px", fontSize: 14, marginBottom: 12 }}>{error}</div>}
+      <BotonPrincipal onClick={enviar} disabled={enviando}>{enviando ? t.enviando : t.confirmar}</BotonPrincipal>
+    </div>
+  );
+}
+
+function DatosConfirmados({ t, datos, onEditar }) {
+  const n = (datos?.acompanantes || []).length;
+  return (
+    <Tarjeta style={{ textAlign: "center", padding: "26px 20px" }}>
+      <div style={{ width: 54, height: 54, borderRadius: 999, background: C.greenSoft, color: C.green, fontSize: 28, lineHeight: "54px", margin: "0 auto 12px" }}>✓</div>
+      <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 8 }}>{t.listo}</div>
+      <div style={{ fontSize: 14.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>{t.listoSub}</div>
+      {datos && (
+        <div style={{ background: "#FBF8F2", border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 14, textAlign: "left", marginBottom: 14 }}>
+          <div style={{ fontWeight: 600 }}>{datos.nombreCompleto}</div>
+          <div style={{ color: C.muted, fontSize: 13 }}>{({ DNI: t.dni, Pasaporte: t.pasaporte, CE: t.ce }[datos.tipoDocumento] || datos.tipoDocumento)} {datos.numeroDocumento}{datos.horaLlegada ? ` · ${datos.horaLlegada}` : ""}</div>
+          <div style={{ color: C.muted, fontSize: 13 }}>{t.resumenAcomp(n)}</div>
+        </div>
+      )}
+      <button onClick={onEditar} style={{ border: "none", background: "none", color: C.gold, fontSize: 14.5, fontWeight: 600, cursor: "pointer" }}>{t.editar}</button>
+    </Tarjeta>
+  );
+}
+
+// ---------- paso 2: carta ----------
+function FilaProducto({ p, cantidad, onCambiar, t }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.line}` }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>{p.nombre}</div>
+        {p.descripcion && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{p.descripcion}</div>}
+        <div style={{ fontSize: 14, color: C.gold, fontWeight: 700, marginTop: 4 }}>{soles(p.precio)}</div>
+      </div>
+      {cantidad > 0 ? (
+        <Stepper cantidad={cantidad} onMenos={() => onCambiar(p.id, -1)} onMas={() => onCambiar(p.id, 1)} />
+      ) : (
+        <button onClick={() => onCambiar(p.id, 1)} style={{
+          border: `1px solid ${C.ink}`, background: "#fff", color: C.ink, borderRadius: 999,
+          padding: "8px 14px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", flexShrink: 0,
+        }}>{t.agregar}</button>
+      )}
+    </div>
+  );
+}
+
+function BloqueRecomendados({ titulo, sub, icono, ids, porId, carrito, onCambiar, t }) {
+  const lista = ids.map((id) => porId[id]).filter(Boolean);
+  if (lista.length === 0) return null;
+  return (
+    <Tarjeta>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 22 }} aria-hidden="true">{icono}</span>
+        <div>
+          <div style={{ fontSize: 16.5, fontWeight: 700 }}>{titulo}</div>
+          <div style={{ fontSize: 12.5, color: C.muted }}>{sub}</div>
+        </div>
+      </div>
+      {lista.map((p) => <FilaProducto key={p.id} p={p} cantidad={carrito[p.id] || 0} onCambiar={onCambiar} t={t} />)}
+    </Tarjeta>
+  );
+}
+
+function Carta({ t, lang, codigo, info }) {
+  const [carta, setCarta] = useState(null);
+  const [error, setError] = useState(null);
+  const [carrito, setCarrito] = useState({});
+  const [verTodo, setVerTodo] = useState(false);
+  const [catActiva, setCatActiva] = useState(null);
+  const [hoja, setHoja] = useState(false);
+  const [nota, setNota] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState(null);
+  const [recibido, setRecibido] = useState(false);
+  const [pedidos, setPedidos] = useState([]);
+
+  const cargarPedidos = useCallback(() => {
+    api(`/api/huesped/${codigo}/pedidos`).then((d) => setPedidos(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [codigo]);
+
+  useEffect(() => {
+    api(`/api/huesped/${codigo}/carta`).then(setCarta).catch(() => setError(t.sinConexion));
+    cargarPedidos();
+    const iv = setInterval(cargarPedidos, 20000);
+    return () => clearInterval(iv);
+  }, [codigo]);
+
+  const porId = useMemo(() => {
+    const m = {};
+    (carta?.productos || []).forEach((p) => { m[p.id] = p; });
+    return m;
+  }, [carta]);
+  const categorias = useMemo(() => {
+    const orden = ["gastronomia", "bebidas", "transporte"];
+    const cs = [...new Set((carta?.productos || []).map((p) => p.categoria))];
+    return cs.sort((a, b) => {
+      const ia = orden.indexOf(String(a).toLowerCase()), ib = orden.indexOf(String(b).toLowerCase());
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+  }, [carta]);
+  useEffect(() => { if (!catActiva && categorias.length) setCatActiva(categorias[0]); }, [categorias.join("|")]);
+
+  function onCambiar(id, delta) {
+    setCarrito((prev) => {
+      const n = Math.max(0, Math.min(20, (prev[id] || 0) + delta));
+      const copia = { ...prev };
+      if (n === 0) delete copia[id]; else copia[id] = n;
+      return copia;
+    });
+  }
+  const lineas = Object.entries(carrito).map(([id, cantidad]) => ({ p: porId[id], cantidad })).filter((l) => l.p);
+  const unidades = lineas.reduce((s, l) => s + l.cantidad, 0);
+  const total = lineas.reduce((s, l) => s + l.cantidad * Number(l.p.precio), 0);
+
+  async function enviar() {
+    setEnviando(true); setErrorEnvio(null);
+    try {
+      await api(`/api/huesped/${codigo}/pedido`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: lineas.map((l) => ({ productoId: l.p.id, cantidad: l.cantidad })), nota: nota.trim() || null }),
+      });
+      setCarrito({}); setNota(""); setHoja(false); setRecibido(true);
+      cargarPedidos();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setErrorEnvio(e.status === 429 || e.status === 400 ? e.message : t.errorEnviar);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  // Después de las 17:00 (hora de Perú) primero va la cena; antes, lo ligero.
+  const horaPeru = Number(new Date().toLocaleString("en-US", { timeZone: "America/Lima", hour: "numeric", hour12: false }));
+  const primeroCena = horaPeru >= 17 || horaPeru < 4;
+  const bloques = [
+    { key: "ligero", titulo: t.ligero, sub: t.ligeroSub, icono: "🥣", ids: carta?.recomendados?.ligero || [] },
+    { key: "cena", titulo: t.cena, sub: t.cenaSub, icono: "🍽️", ids: carta?.recomendados?.cena || [] },
+  ];
+  if (primeroCena) bloques.reverse();
+
+  return (
+    <div style={{ paddingBottom: unidades > 0 ? 90 : 10 }}>
+      <Tarjeta style={{ background: C.dark, color: "#fff", border: "none" }}>
+        <div style={{ fontSize: 21, fontWeight: 700 }}>{t.hola(info.nombre)} 👋</div>
+        <div style={{ fontSize: 13, color: "#E8D9B5", marginTop: 3, letterSpacing: 0.5 }}>{t.domo(info.domo)}</div>
+        <div style={{ fontSize: 14, color: "#D8D2C6", marginTop: 8, lineHeight: 1.45 }}>{t.introCarta}</div>
+      </Tarjeta>
+
+      {recibido && (
+        <Tarjeta style={{ background: C.greenSoft, border: `1px solid #C8DCCB` }}>
+          <div style={{ fontSize: 16.5, fontWeight: 700, color: C.green }}>✓ {t.pedidoRecibido}</div>
+          <div style={{ fontSize: 14, color: C.ink, marginTop: 4 }}>{t.pedidoRecibidoSub}</div>
+        </Tarjeta>
+      )}
+
+      {pedidos.length > 0 && (
+        <Tarjeta>
+          <div style={{ fontSize: 15.5, fontWeight: 700, marginBottom: 6 }}>{t.misPedidos}</div>
+          {pedidos.slice(0, 5).map((pd) => {
+            const color = pd.estado === "aceptado" ? C.green : pd.estado === "rechazado" ? C.red : C.gold;
+            const fondo = pd.estado === "aceptado" ? C.greenSoft : pd.estado === "rechazado" ? C.redSoft : C.goldSoft;
+            return (
+              <div key={pd.id} style={{ borderTop: `1px solid ${C.line}`, padding: "9px 0", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontSize: 13.5, minWidth: 0 }}>
+                  {(pd.items || []).map((it) => `${it.cantidad}× ${it.nombre}`).join(", ")}
+                  {pd.estado === "rechazado" && pd.motivo_rechazo && <div style={{ fontSize: 12.5, color: C.red, marginTop: 2 }}>{pd.motivo_rechazo}</div>}
+                </div>
+                <span style={{ flexShrink: 0, alignSelf: "flex-start", fontSize: 12, fontWeight: 700, color, background: fondo, borderRadius: 999, padding: "3px 9px" }}>{t.estado[pd.estado] || pd.estado}</span>
+              </div>
+            );
+          })}
+        </Tarjeta>
+      )}
+
+      {error && <Tarjeta><div style={{ color: C.red }}>{error}</div></Tarjeta>}
+      {!carta && !error && <div style={{ textAlign: "center", color: C.muted, padding: 30 }}>{t.cargando}</div>}
+
+      {carta && bloques.map((b) => (
+        <BloqueRecomendados key={b.key} titulo={b.titulo} sub={b.sub} icono={b.icono} ids={b.ids} porId={porId} carrito={carrito} onCambiar={onCambiar} t={t} />
+      ))}
+
+      {carta && (
+        <button onClick={() => setVerTodo((v) => !v)} style={{
+          width: "100%", border: `1px solid ${C.ink}`, background: "transparent", color: C.ink, borderRadius: 14,
+          padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 14,
+        }}>{verTodo ? t.ocultarCarta : `📖 ${t.verCarta}`}</button>
+      )}
+
+      {carta && verTodo && (
+        <Tarjeta>
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 8, marginBottom: 2 }}>
+            {categorias.map((c) => {
+              const activa = c === catActiva;
+              return (
+                <button key={c} onClick={() => setCatActiva(c)} style={{
+                  flexShrink: 0, border: `1px solid ${activa ? C.ink : C.line}`, background: activa ? C.ink : "#fff",
+                  color: activa ? "#fff" : C.ink, borderRadius: 999, padding: "7px 13px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                }}>{t.categoria(c)}</button>
+              );
+            })}
+          </div>
+          {(carta.productos || []).filter((p) => p.categoria === catActiva).map((p) => (
+            <FilaProducto key={p.id} p={p} cantidad={carrito[p.id] || 0} onCambiar={onCambiar} t={t} />
+          ))}
+        </Tarjeta>
+      )}
+
+      {unidades > 0 && !hoja && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "linear-gradient(rgba(245,240,230,0), #F5F0E6 35%)" }}>
+          <div style={{ maxWidth: 520, margin: "0 auto" }}>
+            <BotonPrincipal onClick={() => setHoja(true)}>
+              <span style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{t.verPedido} · {unidades}</span><span>{soles(total)}</span>
+              </span>
+            </BotonPrincipal>
+          </div>
+        </div>
+      )}
+
+      {hoja && (
+        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(20,18,15,0.45)", display: "flex", alignItems: "flex-end", zIndex: 10 }} onClick={() => setHoja(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: C.bg, width: "100%", maxWidth: 560, margin: "0 auto", borderRadius: "22px 22px 0 0",
+            padding: "18px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "88vh", overflowY: "auto",
+          }}>
+            <div style={{ width: 40, height: 4, background: C.line, borderRadius: 4, margin: "0 auto 12px" }} />
+            <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 6 }}>{t.tuPedido}</div>
+            <Tarjeta style={{ padding: "4px 14px" }}>
+              {lineas.map((l, i) => (
+                <div key={l.p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 600 }}>{l.p.nombre}</div>
+                    <div style={{ fontSize: 13, color: C.muted }}>{soles(l.cantidad * Number(l.p.precio))}</div>
+                  </div>
+                  <Stepper cantidad={l.cantidad} onMenos={() => onCambiar(l.p.id, -1)} onMas={() => onCambiar(l.p.id, 1)} />
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.ink}`, padding: "11px 0", fontWeight: 700, fontSize: 16 }}>
+                <span>{t.total}</span><span>{soles(total)}</span>
+              </div>
+            </Tarjeta>
+            <Campo label={t.nota}>
+              <input style={inputBase} value={nota} onChange={(e) => setNota(e.target.value)} placeholder={t.notaPh} maxLength={300} />
+            </Campo>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.4 }}>{t.avisoCargo}</div>
+            {errorEnvio && <div role="alert" style={{ background: C.redSoft, color: C.red, borderRadius: 12, padding: "10px 12px", fontSize: 14, marginBottom: 12 }}>{errorEnvio}</div>}
+            <BotonPrincipal onClick={enviar} disabled={enviando || lineas.length === 0}>{enviando ? t.enviando : t.enviarPedido}</BotonPrincipal>
+            <button onClick={() => setHoja(false)} style={{ width: "100%", border: "none", background: "none", color: C.muted, fontSize: 14.5, padding: 12, cursor: "pointer" }}>{t.seguirViendo}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- app ----------
+function App() {
+  const codigo = (new URLSearchParams(window.location.search).get("c") || "").trim().toUpperCase();
+  const [lang, setLangState] = useState(idiomaInicial);
+  const t = TXT[lang];
+  const [info, setInfo] = useState(null);
+  const [estadoCarga, setEstadoCarga] = useState("cargando"); // cargando | ok | invalido | sinconexion
+  const [editando, setEditando] = useState(false);
+
+  function setLang(l) {
+    setLangState(l);
+    try { localStorage.setItem("ms_huesped_idioma", l); } catch (e) {}
+  }
+
+  const cargar = useCallback(() => {
+    if (!codigo) { setEstadoCarga("invalido"); return; }
+    setEstadoCarga("cargando");
+    api(`/api/huesped/${encodeURIComponent(codigo)}`)
+      .then((d) => { setInfo(d); setEstadoCarga("ok"); })
+      .catch((e) => setEstadoCarga(e.status === 404 ? "invalido" : "sinconexion"));
+  }, [codigo]);
+  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+
+  let contenido;
+  if (estadoCarga === "cargando") {
+    contenido = <div style={{ textAlign: "center", color: C.muted, padding: 40 }}>{t.cargando}</div>;
+  } else if (estadoCarga === "invalido") {
+    contenido = (
+      <Tarjeta style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{t.enlaceInvalido}</div>
+        <div style={{ color: C.muted, fontSize: 14.5 }}>{t.enlaceInvalidoSub}</div>
+      </Tarjeta>
+    );
+  } else if (estadoCarga === "sinconexion") {
+    contenido = (
+      <Tarjeta style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 15.5, marginBottom: 14 }}>{t.sinConexion}</div>
+        <BotonPrincipal onClick={cargar}>{t.reintentar}</BotonPrincipal>
+      </Tarjeta>
+    );
+  } else if (info.estado === "check_in") {
+    contenido = <Carta t={t} lang={lang} codigo={codigo} info={info} />;
+  } else if (info.estado === "check_out") {
+    contenido = (
+      <Tarjeta style={{ textAlign: "center", padding: "30px 20px" }}>
+        <div style={{ fontSize: 30, marginBottom: 8 }} aria-hidden="true">🌿</div>
+        <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 6 }}>{t.gracias}</div>
+        <div style={{ color: C.muted, fontSize: 14.5 }}>{t.graciasSub}</div>
+      </Tarjeta>
+    );
+  } else {
+    // confirmada: antes de llegar
+    const mostrarForm = !info.datosConfirmados || editando;
+    contenido = (
+      <div>
+        <div style={{ padding: "8px 4px 16px" }}>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{t.hola(info.datosEnviados?.nombreCompleto || info.nombre)} 👋</div>
+          <div style={{ fontSize: 15, color: C.gold, fontWeight: 600, marginTop: 3 }}>{t.teEsperamos(fechaBonita(info.fechaLlegada, lang))}</div>
+          {mostrarForm && <div style={{ fontSize: 14.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{t.introDatos}</div>}
+        </div>
+        {mostrarForm ? (
+          <FormularioDatos t={t} codigo={codigo} inicial={info.datosEnviados || (info.nombre ? { nombreCompleto: info.nombre } : null)}
+            alGuardar={() => { setEditando(false); cargar(); window.scrollTo({ top: 0 }); }} />
+        ) : (
+          <DatosConfirmados t={t} datos={info.datosEnviados} onEditar={() => setEditando(true)} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, position: "relative" }}>
+      <SelectorIdioma lang={lang} setLang={setLang} />
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 14px 24px" }}>
+        <Marca />
+        <div style={{ height: 14 }} />
+        {contenido}
+        {WHATSAPP_HOTEL && (
+          <div style={{ textAlign: "center", fontSize: 13, color: C.muted, marginTop: 8 }}>
+            <a href={`https://wa.me/${WHATSAPP_HOTEL}`} style={{ color: C.gold }}>WhatsApp</a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
