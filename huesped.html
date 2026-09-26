@@ -1,40 +1,92 @@
-// Página del huésped — Miski Samay (Diálogo con Huésped, 25 set).
-// Se abre desde el link que recepción manda por WhatsApp:
-//   huesped.html?c=CODIGO
-// Antes de llegar: confirmar datos (titular + acompañantes).
-// Con el check-in hecho (domo asignado): carta con recomendados y pedidos.
-// Este archivo es la FUENTE (JSX). huesped.html lleva el mismo código ya
-// compilado a JavaScript normal, para que cargue rápido en el celular del
-// huésped (sin el compilador Babel de ~3 MB que usan las pantallas del staff).
-
-const { useState, useEffect, useMemo, useCallback } = React;
-
-const API = "https://miski-samay-backend-production.up.railway.app";
-const WHATSAPP_HOTEL = ""; // opcional: número de recepción para "¿Dudas?"; vacío = no se muestra
-
-const C = {
-  bg: "#F5F0E6", card: "#FFFFFF", line: "#E6DDCB", ink: "#221F1A", muted: "#766E61",
-  gold: "#A9812F", goldSoft: "#F1E6CC", green: "#4F7457", greenSoft: "#E3EDE4",
-  red: "#9C3B2F", redSoft: "#F5E1DD", dark: "#1C1A20",
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#F5F0E6" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Miski Samay — Domo Boutique</title>
+<link rel="icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&display=swap" />
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #F5F0E6; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+button { font-family: inherit; }
+input:focus, select:focus, textarea:focus { border-color: #A9812F !important; box-shadow: 0 0 0 3px rgba(169,129,47,0.15); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<noscript>Activa JavaScript para ver esta página. / Please enable JavaScript.</noscript>
+<!-- Código generado desde huesped.src.jsx (no editar a mano: editar la fuente y recompilar). -->
+<script>
+function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+function _regenerator() { var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
+function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+var _React = React,
+  useState = _React.useState,
+  useEffect = _React.useEffect,
+  useMemo = _React.useMemo,
+  useCallback = _React.useCallback;
+var API = "https://miski-samay-backend-production.up.railway.app";
+var WHATSAPP_HOTEL = "";
+var C = {
+  bg: "#F5F0E6",
+  card: "#FFFFFF",
+  line: "#E6DDCB",
+  ink: "#221F1A",
+  muted: "#766E61",
+  gold: "#A9812F",
+  goldSoft: "#F1E6CC",
+  green: "#4F7457",
+  greenSoft: "#E3EDE4",
+  red: "#9C3B2F",
+  redSoft: "#F5E1DD",
+  dark: "#1C1A20"
 };
-
-/*__PAISES__*/
-
-const TXT = {
+var PAISES = ["Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Esuatini", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guyana", "Guinea", "Guinea-Bisáu", "Guinea Ecuatorial", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Macedonia del Norte", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República del Congo", "República Democrática del Congo", "República Dominicana", "Ruanda", "Rumanía", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue"];
+var TXT = {
   es: {
     cargando: "Cargando…",
     enlaceInvalido: "Este enlace no es válido o ya venció.",
     enlaceInvalidoSub: "Escríbenos por WhatsApp y te ayudamos.",
     sinConexion: "No pudimos conectarnos. Revisa tu internet e intenta de nuevo.",
     reintentar: "Reintentar",
-    hola: (n) => (n ? `Hola, ${n.split(" ")[0]}` : "Hola"),
-    teEsperamos: (f) => `Te esperamos el ${f}`,
+    hola: function hola(n) {
+      return n ? "Hola, ".concat(n.split(" ")[0]) : "Hola";
+    },
+    teEsperamos: function teEsperamos(f) {
+      return "Te esperamos el ".concat(f);
+    },
     introDatos: "Para que tu llegada sea rápida, confirma tus datos y los de quienes te acompañan. Toma 1 minuto.",
     tusDatos: "Tus datos",
     nombre: "Nombre completo (como en tu documento)",
     tipoDoc: "Tipo de documento",
     elegir: "Elegir…",
-    dni: "DNI", pasaporte: "Pasaporte", ce: "Carné de extranjería",
+    dni: "DNI",
+    pasaporte: "Pasaporte",
+    ce: "Carné de extranjería",
     numDoc: "Número de documento",
     pais: "País",
     elegirPais: "Elige tu país",
@@ -46,7 +98,9 @@ const TXT = {
     sinAcompanantes: "¿Viajas con alguien? Agrégalo aquí.",
     agregarAcomp: "+ Agregar acompañante",
     quitar: "Quitar",
-    acompN: (i) => `Acompañante ${i}`,
+    acompN: function acompN(i) {
+      return "Acompa\xF1ante ".concat(i);
+    },
     comentario: "¿Algo que debamos saber? (opcional)",
     comentarioPh: "Alergias, una celebración, llegada tarde…",
     confirmar: "Confirmar mis datos",
@@ -55,8 +109,12 @@ const TXT = {
     listo: "¡Listo, tus datos están confirmados!",
     listoSub: "Gracias. Cuando llegues y te asignemos tu domo, por este mismo enlace podrás pedir comida, bebidas y experiencias.",
     editar: "Corregir mis datos",
-    resumenAcomp: (n) => (n === 0 ? "Sin acompañantes" : n === 1 ? "1 acompañante" : `${n} acompañantes`),
-    domo: (d) => `Domo ${d}`,
+    resumenAcomp: function resumenAcomp(n) {
+      return n === 0 ? "Sin acompañantes" : n === 1 ? "1 acompañante" : "".concat(n, " acompa\xF1antes");
+    },
+    domo: function domo(d) {
+      return "Domo ".concat(d);
+    },
     introCarta: "Pide desde aquí y te lo llevamos. Lo confirmamos en unos minutos.",
     ligero: "Algo ligero para empezar",
     ligeroSub: "Ideal si llegas cansado del viaje",
@@ -76,11 +134,21 @@ const TXT = {
     pedidoRecibido: "¡Pedido recibido!",
     pedidoRecibidoSub: "En unos minutos lo confirmamos. Puedes ver el estado aquí abajo.",
     misPedidos: "Mis pedidos",
-    estado: { por_confirmar: "Por confirmar", aceptado: "Confirmado", rechazado: "No disponible" },
+    estado: {
+      por_confirmar: "Por confirmar",
+      aceptado: "Confirmado",
+      rechazado: "No disponible"
+    },
     gracias: "¡Gracias por tu visita!",
     graciasSub: "Esperamos verte pronto en Miski Samay.",
-    categoria: (c) => ({ gastronomia: "Restaurante", bebidas: "Bar", transporte: "Experiencias y traslados" }[String(c).toLowerCase()] || (c.charAt(0).toUpperCase() + c.slice(1))),
-    errorEnviar: "No se pudo enviar. Intenta de nuevo.",
+    categoria: function categoria(c) {
+      return {
+        gastronomia: "Restaurante",
+        bebidas: "Bar",
+        transporte: "Experiencias y traslados"
+      }[String(c).toLowerCase()] || c.charAt(0).toUpperCase() + c.slice(1);
+    },
+    errorEnviar: "No se pudo enviar. Intenta de nuevo."
   },
   en: {
     cargando: "Loading…",
@@ -88,14 +156,20 @@ const TXT = {
     enlaceInvalidoSub: "Message us on WhatsApp and we'll help you.",
     sinConexion: "We couldn't connect. Check your internet and try again.",
     reintentar: "Try again",
-    hola: (n) => (n ? `Hello, ${n.split(" ")[0]}` : "Hello"),
-    teEsperamos: (f) => `We look forward to seeing you on ${f}`,
+    hola: function hola(n) {
+      return n ? "Hello, ".concat(n.split(" ")[0]) : "Hello";
+    },
+    teEsperamos: function teEsperamos(f) {
+      return "We look forward to seeing you on ".concat(f);
+    },
     introDatos: "To make your arrival quick, please confirm your details and those of your companions. It takes 1 minute.",
     tusDatos: "Your details",
     nombre: "Full name (as on your ID)",
     tipoDoc: "Document type",
     elegir: "Choose…",
-    dni: "DNI (Peru)", pasaporte: "Passport", ce: "Foreigner ID card (CE)",
+    dni: "DNI (Peru)",
+    pasaporte: "Passport",
+    ce: "Foreigner ID card (CE)",
     numDoc: "Document number",
     pais: "Country",
     elegirPais: "Choose your country",
@@ -107,7 +181,9 @@ const TXT = {
     sinAcompanantes: "Travelling with someone? Add them here.",
     agregarAcomp: "+ Add companion",
     quitar: "Remove",
-    acompN: (i) => `Companion ${i}`,
+    acompN: function acompN(i) {
+      return "Companion ".concat(i);
+    },
     comentario: "Anything we should know? (optional)",
     comentarioPh: "Allergies, a celebration, late arrival…",
     confirmar: "Confirm my details",
@@ -116,8 +192,12 @@ const TXT = {
     listo: "All set, your details are confirmed!",
     listoSub: "Thank you. Once you arrive and we assign your dome, you can order food, drinks and experiences from this same link.",
     editar: "Edit my details",
-    resumenAcomp: (n) => (n === 0 ? "No companions" : n === 1 ? "1 companion" : `${n} companions`),
-    domo: (d) => `Dome ${d}`,
+    resumenAcomp: function resumenAcomp(n) {
+      return n === 0 ? "No companions" : n === 1 ? "1 companion" : "".concat(n, " companions");
+    },
+    domo: function domo(d) {
+      return "Dome ".concat(d);
+    },
     introCarta: "Order from here and we'll bring it to you. We'll confirm in a few minutes.",
     ligero: "Something light to start",
     ligeroSub: "Perfect after a long trip",
@@ -137,564 +217,1469 @@ const TXT = {
     pedidoRecibido: "Order received!",
     pedidoRecibidoSub: "We'll confirm it in a few minutes. You can follow its status below.",
     misPedidos: "My orders",
-    estado: { por_confirmar: "Awaiting confirmation", aceptado: "Confirmed", rechazado: "Not available" },
+    estado: {
+      por_confirmar: "Awaiting confirmation",
+      aceptado: "Confirmed",
+      rechazado: "Not available"
+    },
     gracias: "Thank you for staying with us!",
     graciasSub: "We hope to see you again at Miski Samay.",
-    categoria: (c) => ({ gastronomia: "Restaurant", bebidas: "Bar", transporte: "Experiences & transfers" }[String(c).toLowerCase()] || (c.charAt(0).toUpperCase() + c.slice(1))),
-    errorEnviar: "Couldn't send. Please try again.",
-  },
+    categoria: function categoria(c) {
+      return {
+        gastronomia: "Restaurant",
+        bebidas: "Bar",
+        transporte: "Experiences & transfers"
+      }[String(c).toLowerCase()] || c.charAt(0).toUpperCase() + c.slice(1);
+    },
+    errorEnviar: "Couldn't send. Please try again."
+  }
 };
-
 function idiomaInicial() {
   try {
-    const guardado = localStorage.getItem("ms_huesped_idioma");
+    var guardado = localStorage.getItem("ms_huesped_idioma");
     if (guardado === "es" || guardado === "en") return guardado;
   } catch (e) {}
-  const nav = (navigator.language || "es").toLowerCase();
+  var nav = (navigator.language || "es").toLowerCase();
   return nav.startsWith("es") ? "es" : "en";
 }
-
 function fechaBonita(iso, lang) {
   if (!iso) return "";
-  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
-  return d.toLocaleDateString(lang === "es" ? "es-PE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  var d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return d.toLocaleDateString(lang === "es" ? "es-PE" : "en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long"
+  });
 }
 function soles(n) {
-  return "S/ " + (Number(n) || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return "S/ " + (Number(n) || 0).toLocaleString("es-PE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 }
-
-async function api(path, opts) {
-  const res = await fetch(API + path, opts);
-  let data = null;
-  try { data = await res.json(); } catch (e) {}
-  if (!res.ok) {
-    const err = new Error((data && data.error) || `HTTP ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return data;
+function api(_x, _x2) {
+  return _api.apply(this, arguments);
 }
-
-// ---------- piezas visuales ----------
-function Marca() {
-  return (
-    <div style={{ textAlign: "center", padding: "22px 0 6px" }}>
-      <svg width="34" height="34" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-        <path d="M15 4 C8 4 3.5 10 3.5 21 H26.5 C26.5 10 22 4 15 4 Z" stroke={C.gold} strokeWidth="1.2" fill="none" />
-        <path d="M11.5 21 V16 C11.5 13.8 13.1 12.5 15 12.5 C16.9 12.5 18.5 13.8 18.5 16 V21" stroke={C.gold} strokeWidth="1.1" fill="none" />
-      </svg>
-      <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 22, letterSpacing: 3, color: C.ink, marginTop: 2 }}>MISKI SAMAY</div>
-      <div style={{ fontSize: 10, letterSpacing: 3, color: C.gold }}>DOMO BOUTIQUE · URUBAMBA</div>
-    </div>
-  );
-}
-
-function SelectorIdioma({ lang, setLang }) {
-  const b = (code, label) => (
-    <button onClick={() => setLang(code)} aria-pressed={lang === code} style={{
-      border: "none", background: lang === code ? C.ink : "transparent", color: lang === code ? "#fff" : C.muted,
-      borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-    }}>{label}</button>
-  );
-  return (
-    <div style={{ position: "absolute", top: 12, right: 12, background: C.card, border: `1px solid ${C.line}`, borderRadius: 999, padding: 2, display: "flex" }}>
-      {b("es", "ES")}{b("en", "EN")}
-    </div>
-  );
-}
-
-function Tarjeta({ children, style }) {
-  return <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, padding: 18, marginBottom: 14, ...style }}>{children}</div>;
-}
-
-const inputBase = {
-  width: "100%", background: "#FBF8F2", border: `1px solid ${C.line}`, borderRadius: 12, color: C.ink,
-  padding: "12px 12px", fontSize: 16, outline: "none", fontFamily: "inherit",
-};
-function Campo({ label, children }) {
-  return (
-    <label style={{ display: "block", marginBottom: 12 }}>
-      <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 5 }}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function BotonPrincipal({ children, onClick, disabled, style }) {
-  return (
-    <button onClick={onClick} disabled={disabled} style={{
-      width: "100%", border: "none", borderRadius: 14, padding: "15px 16px", fontSize: 16, fontWeight: 700,
-      background: disabled ? "#CFC6B5" : C.dark, color: "#fff", cursor: disabled ? "default" : "pointer", ...style,
-    }}>{children}</button>
-  );
-}
-
-function Stepper({ cantidad, onMenos, onMas }) {
-  const b = (txt, fn, label) => (
-    <button onClick={fn} aria-label={label} style={{
-      width: 34, height: 34, borderRadius: 999, border: `1px solid ${C.line}`, background: "#fff",
-      fontSize: 18, lineHeight: "30px", color: C.ink, cursor: "pointer", padding: 0,
-    }}>{txt}</button>
-  );
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      {b("−", onMenos, "menos")}
-      <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700 }}>{cantidad}</span>
-      {b("+", onMas, "más")}
-    </div>
-  );
-}
-
-// ---------- paso 1: confirmar datos ----------
-function FormularioDatos({ t, codigo, inicial, alGuardar }) {
-  const [f, setF] = useState(() => ({
-    nombreCompleto: inicial?.nombreCompleto || "",
-    tipoDocumento: inicial?.tipoDocumento || "",
-    numeroDocumento: inicial?.numeroDocumento || "",
-    pais: inicial?.pais || "",
-    celular: inicial?.celular || "",
-    correo: inicial?.correo || "",
-    horaLlegada: inicial?.horaLlegada || "",
-    comentario: inicial?.comentario || "",
+function _api() {
+  _api = _asyncToGenerator(_regenerator().m(function _callee3(path, opts) {
+    var res, data, err, _t3;
+    return _regenerator().w(function (_context3) {
+      while (1) switch (_context3.p = _context3.n) {
+        case 0:
+          _context3.n = 1;
+          return fetch(API + path, opts);
+        case 1:
+          res = _context3.v;
+          data = null;
+          _context3.p = 2;
+          _context3.n = 3;
+          return res.json();
+        case 3:
+          data = _context3.v;
+          _context3.n = 5;
+          break;
+        case 4:
+          _context3.p = 4;
+          _t3 = _context3.v;
+        case 5:
+          if (res.ok) {
+            _context3.n = 6;
+            break;
+          }
+          err = new Error(data && data.error || "HTTP ".concat(res.status));
+          err.status = res.status;
+          throw err;
+        case 6:
+          return _context3.a(2, data);
+      }
+    }, _callee3, null, [[2, 4]]);
   }));
-  const [acomp, setAcomp] = useState(() => (inicial?.acompanantes || []).map((a) => ({ ...a })));
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState(null);
-  const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
-
-  function setAc(i, k, v) { setAcomp((prev) => prev.map((a, j) => (j === i ? { ...a, [k]: v } : a))); }
-
-  async function enviar() {
-    if (!f.nombreCompleto.trim() || !f.tipoDocumento || !f.numeroDocumento.trim() || !f.celular.trim()) {
-      setError(t.faltan);
-      return;
+  return _api.apply(this, arguments);
+}
+function Marca() {
+  return React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "22px 0 6px"
     }
-    setEnviando(true); setError(null);
-    try {
-      await api(`/api/huesped/${codigo}/datos`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, acompanantes: acomp.filter((a) => (a.nombreCompleto || "").trim()) }),
+  }, React.createElement("svg", {
+    width: "34",
+    height: "34",
+    viewBox: "0 0 30 30",
+    fill: "none",
+    "aria-hidden": "true"
+  }, React.createElement("path", {
+    d: "M15 4 C8 4 3.5 10 3.5 21 H26.5 C26.5 10 22 4 15 4 Z",
+    stroke: C.gold,
+    strokeWidth: "1.2",
+    fill: "none"
+  }), React.createElement("path", {
+    d: "M11.5 21 V16 C11.5 13.8 13.1 12.5 15 12.5 C16.9 12.5 18.5 13.8 18.5 16 V21",
+    stroke: C.gold,
+    strokeWidth: "1.1",
+    fill: "none"
+  })), React.createElement("div", {
+    style: {
+      fontFamily: "'Cormorant Garamond', Georgia, serif",
+      fontSize: 22,
+      letterSpacing: 3,
+      color: C.ink,
+      marginTop: 2
+    }
+  }, "MISKI SAMAY"), React.createElement("div", {
+    style: {
+      fontSize: 10,
+      letterSpacing: 3,
+      color: C.gold
+    }
+  }, "DOMO BOUTIQUE \xB7 URUBAMBA"));
+}
+function SelectorIdioma(_ref) {
+  var lang = _ref.lang,
+    setLang = _ref.setLang;
+  var b = function b(code, label) {
+    return React.createElement("button", {
+      onClick: function onClick() {
+        return setLang(code);
+      },
+      "aria-pressed": lang === code,
+      style: {
+        border: "none",
+        background: lang === code ? C.ink : "transparent",
+        color: lang === code ? "#fff" : C.muted,
+        borderRadius: 999,
+        padding: "5px 11px",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer"
+      }
+    }, label);
+  };
+  return React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      background: C.card,
+      border: "1px solid ".concat(C.line),
+      borderRadius: 999,
+      padding: 2,
+      display: "flex"
+    }
+  }, b("es", "ES"), b("en", "EN"));
+}
+function Tarjeta(_ref2) {
+  var children = _ref2.children,
+    style = _ref2.style;
+  return React.createElement("div", {
+    style: _objectSpread({
+      background: C.card,
+      border: "1px solid ".concat(C.line),
+      borderRadius: 18,
+      padding: 18,
+      marginBottom: 14
+    }, style)
+  }, children);
+}
+var inputBase = {
+  width: "100%",
+  background: "#FBF8F2",
+  border: "1px solid ".concat(C.line),
+  borderRadius: 12,
+  color: C.ink,
+  padding: "12px 12px",
+  fontSize: 16,
+  outline: "none",
+  fontFamily: "inherit"
+};
+function Campo(_ref3) {
+  var label = _ref3.label,
+    children = _ref3.children;
+  return React.createElement("label", {
+    style: {
+      display: "block",
+      marginBottom: 12
+    }
+  }, React.createElement("span", {
+    style: {
+      display: "block",
+      fontSize: 12.5,
+      color: C.muted,
+      marginBottom: 5
+    }
+  }, label), children);
+}
+function BotonPrincipal(_ref4) {
+  var children = _ref4.children,
+    onClick = _ref4.onClick,
+    disabled = _ref4.disabled,
+    style = _ref4.style;
+  return React.createElement("button", {
+    onClick: onClick,
+    disabled: disabled,
+    style: _objectSpread({
+      width: "100%",
+      border: "none",
+      borderRadius: 14,
+      padding: "15px 16px",
+      fontSize: 16,
+      fontWeight: 700,
+      background: disabled ? "#CFC6B5" : C.dark,
+      color: "#fff",
+      cursor: disabled ? "default" : "pointer"
+    }, style)
+  }, children);
+}
+function Stepper(_ref5) {
+  var cantidad = _ref5.cantidad,
+    onMenos = _ref5.onMenos,
+    onMas = _ref5.onMas;
+  var b = function b(txt, fn, label) {
+    return React.createElement("button", {
+      onClick: fn,
+      "aria-label": label,
+      style: {
+        width: 34,
+        height: 34,
+        borderRadius: 999,
+        border: "1px solid ".concat(C.line),
+        background: "#fff",
+        fontSize: 18,
+        lineHeight: "30px",
+        color: C.ink,
+        cursor: "pointer",
+        padding: 0
+      }
+    }, txt);
+  };
+  return React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, b("−", onMenos, "menos"), React.createElement("span", {
+    style: {
+      minWidth: 18,
+      textAlign: "center",
+      fontWeight: 700
+    }
+  }, cantidad), b("+", onMas, "más"));
+}
+function FormularioDatos(_ref6) {
+  var t = _ref6.t,
+    codigo = _ref6.codigo,
+    inicial = _ref6.inicial,
+    alGuardar = _ref6.alGuardar;
+  var _useState = useState(function () {
+      return {
+        nombreCompleto: (inicial === null || inicial === void 0 ? void 0 : inicial.nombreCompleto) || "",
+        tipoDocumento: (inicial === null || inicial === void 0 ? void 0 : inicial.tipoDocumento) || "",
+        numeroDocumento: (inicial === null || inicial === void 0 ? void 0 : inicial.numeroDocumento) || "",
+        pais: (inicial === null || inicial === void 0 ? void 0 : inicial.pais) || "",
+        celular: (inicial === null || inicial === void 0 ? void 0 : inicial.celular) || "",
+        correo: (inicial === null || inicial === void 0 ? void 0 : inicial.correo) || "",
+        horaLlegada: (inicial === null || inicial === void 0 ? void 0 : inicial.horaLlegada) || "",
+        comentario: (inicial === null || inicial === void 0 ? void 0 : inicial.comentario) || ""
+      };
+    }),
+    _useState2 = _slicedToArray(_useState, 2),
+    f = _useState2[0],
+    setF = _useState2[1];
+  var _useState3 = useState(function () {
+      return ((inicial === null || inicial === void 0 ? void 0 : inicial.acompanantes) || []).map(function (a) {
+        return _objectSpread({}, a);
       });
-      alGuardar();
-    } catch (e) {
-      setError(t.errorEnviar);
-    } finally {
-      setEnviando(false);
-    }
+    }),
+    _useState4 = _slicedToArray(_useState3, 2),
+    acomp = _useState4[0],
+    setAcomp = _useState4[1];
+  var _useState5 = useState(false),
+    _useState6 = _slicedToArray(_useState5, 2),
+    enviando = _useState6[0],
+    setEnviando = _useState6[1];
+  var _useState7 = useState(null),
+    _useState8 = _slicedToArray(_useState7, 2),
+    error = _useState8[0],
+    setError = _useState8[1];
+  var set = function set(k) {
+    return function (e) {
+      return setF(function (prev) {
+        return _objectSpread(_objectSpread({}, prev), {}, _defineProperty({}, k, e.target.value));
+      });
+    };
+  };
+  function setAc(i, k, v) {
+    setAcomp(function (prev) {
+      return prev.map(function (a, j) {
+        return j === i ? _objectSpread(_objectSpread({}, a), {}, _defineProperty({}, k, v)) : a;
+      });
+    });
   }
-
-  const selDoc = (valor, onChange) => (
-    <select value={valor} onChange={onChange} style={inputBase}>
-      <option value="">{t.elegir}</option>
-      <option value="Pasaporte">{t.pasaporte}</option>
-      <option value="DNI">{t.dni}</option>
-      <option value="CE">{t.ce}</option>
-    </select>
-  );
-
-  return (
-    <div>
-      <Tarjeta>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>{t.tusDatos}</div>
-        <Campo label={t.nombre}><input style={inputBase} value={f.nombreCompleto} onChange={set("nombreCompleto")} autoComplete="name" /></Campo>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <Campo label={t.tipoDoc}>{selDoc(f.tipoDocumento, set("tipoDocumento"))}</Campo>
-          <Campo label={t.numDoc}><input style={inputBase} value={f.numeroDocumento} onChange={set("numeroDocumento")} /></Campo>
-        </div>
-        <Campo label={t.pais}>
-          <select style={inputBase} value={f.pais} onChange={set("pais")}>
-            <option value="">{t.elegirPais}</option>
-            {PAISES.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </Campo>
-        <Campo label={t.celular}><input style={inputBase} value={f.celular} onChange={set("celular")} inputMode="tel" autoComplete="tel" placeholder="+51 …" /></Campo>
-        <Campo label={t.correo}><input style={inputBase} value={f.correo} onChange={set("correo")} inputMode="email" autoComplete="email" /></Campo>
-        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 7 }}>{t.horaLlegada}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-          {t.horas.map((h, i) => {
-            const valor = TXT.es.horas[i]; // se guarda siempre en español para recepción
-            const activo = f.horaLlegada === valor;
-            return (
-              <button key={valor} onClick={() => setF((p) => ({ ...p, horaLlegada: activo ? "" : valor }))} style={{
-                border: `1px solid ${activo ? C.gold : C.line}`, background: activo ? C.goldSoft : "#fff", color: C.ink,
-                borderRadius: 999, padding: "8px 12px", fontSize: 13, cursor: "pointer",
-              }}>{h}</button>
-            );
-          })}
-        </div>
-      </Tarjeta>
-
-      <Tarjeta>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t.acompanantes}</div>
-        {acomp.length === 0 && <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 10 }}>{t.sinAcompanantes}</div>}
-        {acomp.map((a, i) => (
-          <div key={i} style={{ borderTop: i === 0 ? "none" : `1px solid ${C.line}`, paddingTop: i === 0 ? 6 : 12, marginTop: i === 0 ? 0 : 4 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>{t.acompN(i + 1)}</span>
-              <button onClick={() => setAcomp((prev) => prev.filter((_, j) => j !== i))} style={{ border: "none", background: "none", color: C.red, fontSize: 13, cursor: "pointer" }}>{t.quitar}</button>
-            </div>
-            <Campo label={t.nombre}><input style={inputBase} value={a.nombreCompleto || ""} onChange={(e) => setAc(i, "nombreCompleto", e.target.value)} /></Campo>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Campo label={t.tipoDoc}>{selDoc(a.tipoDocumento || "", (e) => setAc(i, "tipoDocumento", e.target.value))}</Campo>
-              <Campo label={t.numDoc}><input style={inputBase} value={a.numeroDocumento || ""} onChange={(e) => setAc(i, "numeroDocumento", e.target.value)} /></Campo>
-            </div>
-          </div>
-        ))}
-        {acomp.length < 10 && (
-          <button onClick={() => setAcomp((prev) => [...prev, { nombreCompleto: "", tipoDocumento: "", numeroDocumento: "" }])} style={{
-            width: "100%", border: `1px dashed ${C.gold}`, background: "transparent", color: C.gold, borderRadius: 12,
-            padding: "11px", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
-          }}>{t.agregarAcomp}</button>
-        )}
-      </Tarjeta>
-
-      <Tarjeta>
-        <Campo label={t.comentario}>
-          <textarea style={{ ...inputBase, minHeight: 72, resize: "vertical" }} value={f.comentario} onChange={set("comentario")} placeholder={t.comentarioPh} />
-        </Campo>
-      </Tarjeta>
-
-      {error && <div role="alert" style={{ background: C.redSoft, color: C.red, borderRadius: 12, padding: "10px 12px", fontSize: 14, marginBottom: 12 }}>{error}</div>}
-      <BotonPrincipal onClick={enviar} disabled={enviando}>{enviando ? t.enviando : t.confirmar}</BotonPrincipal>
-    </div>
-  );
+  function enviar() {
+    return _enviar.apply(this, arguments);
+  }
+  function _enviar() {
+    _enviar = _asyncToGenerator(_regenerator().m(function _callee() {
+      var _t;
+      return _regenerator().w(function (_context) {
+        while (1) switch (_context.p = _context.n) {
+          case 0:
+            if (!(!f.nombreCompleto.trim() || !f.tipoDocumento || !f.numeroDocumento.trim() || !f.celular.trim())) {
+              _context.n = 1;
+              break;
+            }
+            setError(t.faltan);
+            return _context.a(2);
+          case 1:
+            setEnviando(true);
+            setError(null);
+            _context.p = 2;
+            _context.n = 3;
+            return api("/api/huesped/".concat(codigo, "/datos"), {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(_objectSpread(_objectSpread({}, f), {}, {
+                acompanantes: acomp.filter(function (a) {
+                  return (a.nombreCompleto || "").trim();
+                })
+              }))
+            });
+          case 3:
+            alGuardar();
+            _context.n = 5;
+            break;
+          case 4:
+            _context.p = 4;
+            _t = _context.v;
+            setError(t.errorEnviar);
+          case 5:
+            _context.p = 5;
+            setEnviando(false);
+            return _context.f(5);
+          case 6:
+            return _context.a(2);
+        }
+      }, _callee, null, [[2, 4, 5, 6]]);
+    }));
+    return _enviar.apply(this, arguments);
+  }
+  var selDoc = function selDoc(valor, onChange) {
+    return React.createElement("select", {
+      value: valor,
+      onChange: onChange,
+      style: inputBase
+    }, React.createElement("option", {
+      value: ""
+    }, t.elegir), React.createElement("option", {
+      value: "Pasaporte"
+    }, t.pasaporte), React.createElement("option", {
+      value: "DNI"
+    }, t.dni), React.createElement("option", {
+      value: "CE"
+    }, t.ce));
+  };
+  return React.createElement("div", null, React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      marginBottom: 12
+    }
+  }, t.tusDatos), React.createElement(Campo, {
+    label: t.nombre
+  }, React.createElement("input", {
+    style: inputBase,
+    value: f.nombreCompleto,
+    onChange: set("nombreCompleto"),
+    autoComplete: "name"
+  })), React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10
+    }
+  }, React.createElement(Campo, {
+    label: t.tipoDoc
+  }, selDoc(f.tipoDocumento, set("tipoDocumento"))), React.createElement(Campo, {
+    label: t.numDoc
+  }, React.createElement("input", {
+    style: inputBase,
+    value: f.numeroDocumento,
+    onChange: set("numeroDocumento")
+  }))), React.createElement(Campo, {
+    label: t.pais
+  }, React.createElement("select", {
+    style: inputBase,
+    value: f.pais,
+    onChange: set("pais")
+  }, React.createElement("option", {
+    value: ""
+  }, t.elegirPais), PAISES.map(function (p) {
+    return React.createElement("option", {
+      key: p,
+      value: p
+    }, p);
+  }))), React.createElement(Campo, {
+    label: t.celular
+  }, React.createElement("input", {
+    style: inputBase,
+    value: f.celular,
+    onChange: set("celular"),
+    inputMode: "tel",
+    autoComplete: "tel",
+    placeholder: "+51 \u2026"
+  })), React.createElement(Campo, {
+    label: t.correo
+  }, React.createElement("input", {
+    style: inputBase,
+    value: f.correo,
+    onChange: set("correo"),
+    inputMode: "email",
+    autoComplete: "email"
+  })), React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: C.muted,
+      marginBottom: 7
+    }
+  }, t.horaLlegada), React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 7
+    }
+  }, t.horas.map(function (h, i) {
+    var valor = TXT.es.horas[i];
+    var activo = f.horaLlegada === valor;
+    return React.createElement("button", {
+      key: valor,
+      onClick: function onClick() {
+        return setF(function (p) {
+          return _objectSpread(_objectSpread({}, p), {}, {
+            horaLlegada: activo ? "" : valor
+          });
+        });
+      },
+      style: {
+        border: "1px solid ".concat(activo ? C.gold : C.line),
+        background: activo ? C.goldSoft : "#fff",
+        color: C.ink,
+        borderRadius: 999,
+        padding: "8px 12px",
+        fontSize: 13,
+        cursor: "pointer"
+      }
+    }, h);
+  }))), React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      marginBottom: 4
+    }
+  }, t.acompanantes), acomp.length === 0 && React.createElement("div", {
+    style: {
+      fontSize: 13.5,
+      color: C.muted,
+      marginBottom: 10
+    }
+  }, t.sinAcompanantes), acomp.map(function (a, i) {
+    return React.createElement("div", {
+      key: i,
+      style: {
+        borderTop: i === 0 ? "none" : "1px solid ".concat(C.line),
+        paddingTop: i === 0 ? 6 : 12,
+        marginTop: i === 0 ? 0 : 4
+      }
+    }, React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 6
+      }
+    }, React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 600,
+        color: C.muted
+      }
+    }, t.acompN(i + 1)), React.createElement("button", {
+      onClick: function onClick() {
+        return setAcomp(function (prev) {
+          return prev.filter(function (_, j) {
+            return j !== i;
+          });
+        });
+      },
+      style: {
+        border: "none",
+        background: "none",
+        color: C.red,
+        fontSize: 13,
+        cursor: "pointer"
+      }
+    }, t.quitar)), React.createElement(Campo, {
+      label: t.nombre
+    }, React.createElement("input", {
+      style: inputBase,
+      value: a.nombreCompleto || "",
+      onChange: function onChange(e) {
+        return setAc(i, "nombreCompleto", e.target.value);
+      }
+    })), React.createElement("div", {
+      style: {
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 10
+      }
+    }, React.createElement(Campo, {
+      label: t.tipoDoc
+    }, selDoc(a.tipoDocumento || "", function (e) {
+      return setAc(i, "tipoDocumento", e.target.value);
+    })), React.createElement(Campo, {
+      label: t.numDoc
+    }, React.createElement("input", {
+      style: inputBase,
+      value: a.numeroDocumento || "",
+      onChange: function onChange(e) {
+        return setAc(i, "numeroDocumento", e.target.value);
+      }
+    }))));
+  }), acomp.length < 10 && React.createElement("button", {
+    onClick: function onClick() {
+      return setAcomp(function (prev) {
+        return [].concat(_toConsumableArray(prev), [{
+          nombreCompleto: "",
+          tipoDocumento: "",
+          numeroDocumento: ""
+        }]);
+      });
+    },
+    style: {
+      width: "100%",
+      border: "1px dashed ".concat(C.gold),
+      background: "transparent",
+      color: C.gold,
+      borderRadius: 12,
+      padding: "11px",
+      fontSize: 14.5,
+      fontWeight: 600,
+      cursor: "pointer"
+    }
+  }, t.agregarAcomp)), React.createElement(Tarjeta, null, React.createElement(Campo, {
+    label: t.comentario
+  }, React.createElement("textarea", {
+    style: _objectSpread(_objectSpread({}, inputBase), {}, {
+      minHeight: 72,
+      resize: "vertical"
+    }),
+    value: f.comentario,
+    onChange: set("comentario"),
+    placeholder: t.comentarioPh
+  }))), error && React.createElement("div", {
+    role: "alert",
+    style: {
+      background: C.redSoft,
+      color: C.red,
+      borderRadius: 12,
+      padding: "10px 12px",
+      fontSize: 14,
+      marginBottom: 12
+    }
+  }, error), React.createElement(BotonPrincipal, {
+    onClick: enviar,
+    disabled: enviando
+  }, enviando ? t.enviando : t.confirmar));
 }
-
-function DatosConfirmados({ t, datos, onEditar }) {
-  const n = (datos?.acompanantes || []).length;
-  return (
-    <Tarjeta style={{ textAlign: "center", padding: "26px 20px" }}>
-      <div style={{ width: 54, height: 54, borderRadius: 999, background: C.greenSoft, color: C.green, fontSize: 28, lineHeight: "54px", margin: "0 auto 12px" }}>✓</div>
-      <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 8 }}>{t.listo}</div>
-      <div style={{ fontSize: 14.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>{t.listoSub}</div>
-      {datos && (
-        <div style={{ background: "#FBF8F2", border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 14, textAlign: "left", marginBottom: 14 }}>
-          <div style={{ fontWeight: 600 }}>{datos.nombreCompleto}</div>
-          <div style={{ color: C.muted, fontSize: 13 }}>{({ DNI: t.dni, Pasaporte: t.pasaporte, CE: t.ce }[datos.tipoDocumento] || datos.tipoDocumento)} {datos.numeroDocumento}{datos.horaLlegada ? ` · ${datos.horaLlegada}` : ""}</div>
-          <div style={{ color: C.muted, fontSize: 13 }}>{t.resumenAcomp(n)}</div>
-        </div>
-      )}
-      <button onClick={onEditar} style={{ border: "none", background: "none", color: C.gold, fontSize: 14.5, fontWeight: 600, cursor: "pointer" }}>{t.editar}</button>
-    </Tarjeta>
-  );
+function DatosConfirmados(_ref7) {
+  var t = _ref7.t,
+    datos = _ref7.datos,
+    onEditar = _ref7.onEditar;
+  var n = ((datos === null || datos === void 0 ? void 0 : datos.acompanantes) || []).length;
+  return React.createElement(Tarjeta, {
+    style: {
+      textAlign: "center",
+      padding: "26px 20px"
+    }
+  }, React.createElement("div", {
+    style: {
+      width: 54,
+      height: 54,
+      borderRadius: 999,
+      background: C.greenSoft,
+      color: C.green,
+      fontSize: 28,
+      lineHeight: "54px",
+      margin: "0 auto 12px"
+    }
+  }, "\u2713"), React.createElement("div", {
+    style: {
+      fontSize: 19,
+      fontWeight: 700,
+      marginBottom: 8
+    }
+  }, t.listo), React.createElement("div", {
+    style: {
+      fontSize: 14.5,
+      color: C.muted,
+      lineHeight: 1.5,
+      marginBottom: 16
+    }
+  }, t.listoSub), datos && React.createElement("div", {
+    style: {
+      background: "#FBF8F2",
+      border: "1px solid ".concat(C.line),
+      borderRadius: 12,
+      padding: "10px 12px",
+      fontSize: 14,
+      textAlign: "left",
+      marginBottom: 14
+    }
+  }, React.createElement("div", {
+    style: {
+      fontWeight: 600
+    }
+  }, datos.nombreCompleto), React.createElement("div", {
+    style: {
+      color: C.muted,
+      fontSize: 13
+    }
+  }, {
+    DNI: t.dni,
+    Pasaporte: t.pasaporte,
+    CE: t.ce
+  }[datos.tipoDocumento] || datos.tipoDocumento, " ", datos.numeroDocumento, datos.horaLlegada ? " \xB7 ".concat(datos.horaLlegada) : ""), React.createElement("div", {
+    style: {
+      color: C.muted,
+      fontSize: 13
+    }
+  }, t.resumenAcomp(n))), React.createElement("button", {
+    onClick: onEditar,
+    style: {
+      border: "none",
+      background: "none",
+      color: C.gold,
+      fontSize: 14.5,
+      fontWeight: 600,
+      cursor: "pointer"
+    }
+  }, t.editar));
 }
-
-// ---------- paso 2: carta ----------
-function FilaProducto({ p, cantidad, onCambiar, t }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.line}` }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>{p.nombre}</div>
-        {p.descripcion && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{p.descripcion}</div>}
-        <div style={{ fontSize: 14, color: C.gold, fontWeight: 700, marginTop: 4 }}>{soles(p.precio)}</div>
-      </div>
-      {cantidad > 0 ? (
-        <Stepper cantidad={cantidad} onMenos={() => onCambiar(p.id, -1)} onMas={() => onCambiar(p.id, 1)} />
-      ) : (
-        <button onClick={() => onCambiar(p.id, 1)} style={{
-          border: `1px solid ${C.ink}`, background: "#fff", color: C.ink, borderRadius: 999,
-          padding: "8px 14px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", flexShrink: 0,
-        }}>{t.agregar}</button>
-      )}
-    </div>
-  );
+function FilaProducto(_ref8) {
+  var p = _ref8.p,
+    cantidad = _ref8.cantidad,
+    onCambiar = _ref8.onCambiar,
+    t = _ref8.t;
+  return React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: "12px 0",
+      borderTop: "1px solid ".concat(C.line)
+    }
+  }, React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 15,
+      fontWeight: 600,
+      lineHeight: 1.3
+    }
+  }, p.nombre), p.descripcion && React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: C.muted,
+      marginTop: 2,
+      lineHeight: 1.35
+    }
+  }, p.descripcion), React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: C.gold,
+      fontWeight: 700,
+      marginTop: 4
+    }
+  }, soles(p.precio))), cantidad > 0 ? React.createElement(Stepper, {
+    cantidad: cantidad,
+    onMenos: function onMenos() {
+      return onCambiar(p.id, -1);
+    },
+    onMas: function onMas() {
+      return onCambiar(p.id, 1);
+    }
+  }) : React.createElement("button", {
+    onClick: function onClick() {
+      return onCambiar(p.id, 1);
+    },
+    style: {
+      border: "1px solid ".concat(C.ink),
+      background: "#fff",
+      color: C.ink,
+      borderRadius: 999,
+      padding: "8px 14px",
+      fontSize: 13.5,
+      fontWeight: 700,
+      cursor: "pointer",
+      flexShrink: 0
+    }
+  }, t.agregar));
 }
-
-function BloqueRecomendados({ titulo, sub, icono, ids, porId, carrito, onCambiar, t }) {
-  const lista = ids.map((id) => porId[id]).filter(Boolean);
+function BloqueRecomendados(_ref9) {
+  var titulo = _ref9.titulo,
+    sub = _ref9.sub,
+    icono = _ref9.icono,
+    ids = _ref9.ids,
+    porId = _ref9.porId,
+    carrito = _ref9.carrito,
+    onCambiar = _ref9.onCambiar,
+    t = _ref9.t;
+  var lista = ids.map(function (id) {
+    return porId[id];
+  }).filter(Boolean);
   if (lista.length === 0) return null;
-  return (
-    <Tarjeta>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
-        <span style={{ fontSize: 22 }} aria-hidden="true">{icono}</span>
-        <div>
-          <div style={{ fontSize: 16.5, fontWeight: 700 }}>{titulo}</div>
-          <div style={{ fontSize: 12.5, color: C.muted }}>{sub}</div>
-        </div>
-      </div>
-      {lista.map((p) => <FilaProducto key={p.id} p={p} cantidad={carrito[p.id] || 0} onCambiar={onCambiar} t={t} />)}
-    </Tarjeta>
-  );
+  return React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      alignItems: "center",
+      marginBottom: 4
+    }
+  }, React.createElement("span", {
+    style: {
+      fontSize: 22
+    },
+    "aria-hidden": "true"
+  }, icono), React.createElement("div", null, React.createElement("div", {
+    style: {
+      fontSize: 16.5,
+      fontWeight: 700
+    }
+  }, titulo), React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: C.muted
+    }
+  }, sub))), lista.map(function (p) {
+    return React.createElement(FilaProducto, {
+      key: p.id,
+      p: p,
+      cantidad: carrito[p.id] || 0,
+      onCambiar: onCambiar,
+      t: t
+    });
+  }));
 }
-
-function Carta({ t, lang, codigo, info }) {
-  const [carta, setCarta] = useState(null);
-  const [error, setError] = useState(null);
-  const [carrito, setCarrito] = useState({});
-  const [verTodo, setVerTodo] = useState(false);
-  const [catActiva, setCatActiva] = useState(null);
-  const [hoja, setHoja] = useState(false);
-  const [nota, setNota] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [errorEnvio, setErrorEnvio] = useState(null);
-  const [recibido, setRecibido] = useState(false);
-  const [pedidos, setPedidos] = useState([]);
-
-  const cargarPedidos = useCallback(() => {
-    api(`/api/huesped/${codigo}/pedidos`).then((d) => setPedidos(Array.isArray(d) ? d : [])).catch(() => {});
+function Carta(_ref0) {
+  var _carta$recomendados, _carta$recomendados2;
+  var t = _ref0.t,
+    lang = _ref0.lang,
+    codigo = _ref0.codigo,
+    info = _ref0.info;
+  var _useState9 = useState(null),
+    _useState0 = _slicedToArray(_useState9, 2),
+    carta = _useState0[0],
+    setCarta = _useState0[1];
+  var _useState1 = useState(null),
+    _useState10 = _slicedToArray(_useState1, 2),
+    error = _useState10[0],
+    setError = _useState10[1];
+  var _useState11 = useState({}),
+    _useState12 = _slicedToArray(_useState11, 2),
+    carrito = _useState12[0],
+    setCarrito = _useState12[1];
+  var _useState13 = useState(false),
+    _useState14 = _slicedToArray(_useState13, 2),
+    verTodo = _useState14[0],
+    setVerTodo = _useState14[1];
+  var _useState15 = useState(null),
+    _useState16 = _slicedToArray(_useState15, 2),
+    catActiva = _useState16[0],
+    setCatActiva = _useState16[1];
+  var _useState17 = useState(false),
+    _useState18 = _slicedToArray(_useState17, 2),
+    hoja = _useState18[0],
+    setHoja = _useState18[1];
+  var _useState19 = useState(""),
+    _useState20 = _slicedToArray(_useState19, 2),
+    nota = _useState20[0],
+    setNota = _useState20[1];
+  var _useState21 = useState(false),
+    _useState22 = _slicedToArray(_useState21, 2),
+    enviando = _useState22[0],
+    setEnviando = _useState22[1];
+  var _useState23 = useState(null),
+    _useState24 = _slicedToArray(_useState23, 2),
+    errorEnvio = _useState24[0],
+    setErrorEnvio = _useState24[1];
+  var _useState25 = useState(false),
+    _useState26 = _slicedToArray(_useState25, 2),
+    recibido = _useState26[0],
+    setRecibido = _useState26[1];
+  var _useState27 = useState([]),
+    _useState28 = _slicedToArray(_useState27, 2),
+    pedidos = _useState28[0],
+    setPedidos = _useState28[1];
+  var cargarPedidos = useCallback(function () {
+    api("/api/huesped/".concat(codigo, "/pedidos")).then(function (d) {
+      return setPedidos(Array.isArray(d) ? d : []);
+    }).catch(function () {});
   }, [codigo]);
-
-  useEffect(() => {
-    api(`/api/huesped/${codigo}/carta`).then(setCarta).catch(() => setError(t.sinConexion));
+  useEffect(function () {
+    api("/api/huesped/".concat(codigo, "/carta")).then(setCarta).catch(function () {
+      return setError(t.sinConexion);
+    });
     cargarPedidos();
-    const iv = setInterval(cargarPedidos, 20000);
-    return () => clearInterval(iv);
+    var iv = setInterval(cargarPedidos, 20000);
+    return function () {
+      return clearInterval(iv);
+    };
   }, [codigo]);
-
-  const porId = useMemo(() => {
-    const m = {};
-    (carta?.productos || []).forEach((p) => { m[p.id] = p; });
+  var porId = useMemo(function () {
+    var m = {};
+    ((carta === null || carta === void 0 ? void 0 : carta.productos) || []).forEach(function (p) {
+      m[p.id] = p;
+    });
     return m;
   }, [carta]);
-  const categorias = useMemo(() => {
-    const orden = ["gastronomia", "bebidas", "transporte"];
-    const cs = [...new Set((carta?.productos || []).map((p) => p.categoria))];
-    return cs.sort((a, b) => {
-      const ia = orden.indexOf(String(a).toLowerCase()), ib = orden.indexOf(String(b).toLowerCase());
+  var categorias = useMemo(function () {
+    var orden = ["gastronomia", "bebidas", "transporte"];
+    var cs = _toConsumableArray(new Set(((carta === null || carta === void 0 ? void 0 : carta.productos) || []).map(function (p) {
+      return p.categoria;
+    })));
+    return cs.sort(function (a, b) {
+      var ia = orden.indexOf(String(a).toLowerCase()),
+        ib = orden.indexOf(String(b).toLowerCase());
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
   }, [carta]);
-  useEffect(() => { if (!catActiva && categorias.length) setCatActiva(categorias[0]); }, [categorias.join("|")]);
-
+  useEffect(function () {
+    if (!catActiva && categorias.length) setCatActiva(categorias[0]);
+  }, [categorias.join("|")]);
   function onCambiar(id, delta) {
-    setCarrito((prev) => {
-      const n = Math.max(0, Math.min(20, (prev[id] || 0) + delta));
-      const copia = { ...prev };
-      if (n === 0) delete copia[id]; else copia[id] = n;
+    setCarrito(function (prev) {
+      var n = Math.max(0, Math.min(20, (prev[id] || 0) + delta));
+      var copia = _objectSpread({}, prev);
+      if (n === 0) delete copia[id];else copia[id] = n;
       return copia;
     });
   }
-  const lineas = Object.entries(carrito).map(([id, cantidad]) => ({ p: porId[id], cantidad })).filter((l) => l.p);
-  const unidades = lineas.reduce((s, l) => s + l.cantidad, 0);
-  const total = lineas.reduce((s, l) => s + l.cantidad * Number(l.p.precio), 0);
-
-  async function enviar() {
-    setEnviando(true); setErrorEnvio(null);
-    try {
-      await api(`/api/huesped/${codigo}/pedido`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lineas.map((l) => ({ productoId: l.p.id, cantidad: l.cantidad })), nota: nota.trim() || null }),
-      });
-      setCarrito({}); setNota(""); setHoja(false); setRecibido(true);
-      cargarPedidos();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (e) {
-      setErrorEnvio(e.status === 429 || e.status === 400 ? e.message : t.errorEnviar);
-    } finally {
-      setEnviando(false);
-    }
+  var lineas = Object.entries(carrito).map(function (_ref1) {
+    var _ref10 = _slicedToArray(_ref1, 2),
+      id = _ref10[0],
+      cantidad = _ref10[1];
+    return {
+      p: porId[id],
+      cantidad: cantidad
+    };
+  }).filter(function (l) {
+    return l.p;
+  });
+  var unidades = lineas.reduce(function (s, l) {
+    return s + l.cantidad;
+  }, 0);
+  var total = lineas.reduce(function (s, l) {
+    return s + l.cantidad * Number(l.p.precio);
+  }, 0);
+  function enviar() {
+    return _enviar2.apply(this, arguments);
   }
-
-  // Después de las 17:00 (hora de Perú) primero va la cena; antes, lo ligero.
-  const horaPeru = Number(new Date().toLocaleString("en-US", { timeZone: "America/Lima", hour: "numeric", hour12: false }));
-  const primeroCena = horaPeru >= 17 || horaPeru < 4;
-  const bloques = [
-    { key: "ligero", titulo: t.ligero, sub: t.ligeroSub, icono: "🥣", ids: carta?.recomendados?.ligero || [] },
-    { key: "cena", titulo: t.cena, sub: t.cenaSub, icono: "🍽️", ids: carta?.recomendados?.cena || [] },
-  ];
+  function _enviar2() {
+    _enviar2 = _asyncToGenerator(_regenerator().m(function _callee2() {
+      var _t2;
+      return _regenerator().w(function (_context2) {
+        while (1) switch (_context2.p = _context2.n) {
+          case 0:
+            setEnviando(true);
+            setErrorEnvio(null);
+            _context2.p = 1;
+            _context2.n = 2;
+            return api("/api/huesped/".concat(codigo, "/pedido"), {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                items: lineas.map(function (l) {
+                  return {
+                    productoId: l.p.id,
+                    cantidad: l.cantidad
+                  };
+                }),
+                nota: nota.trim() || null
+              })
+            });
+          case 2:
+            setCarrito({});
+            setNota("");
+            setHoja(false);
+            setRecibido(true);
+            cargarPedidos();
+            window.scrollTo({
+              top: 0,
+              behavior: "smooth"
+            });
+            _context2.n = 4;
+            break;
+          case 3:
+            _context2.p = 3;
+            _t2 = _context2.v;
+            setErrorEnvio(_t2.status === 429 || _t2.status === 400 ? _t2.message : t.errorEnviar);
+          case 4:
+            _context2.p = 4;
+            setEnviando(false);
+            return _context2.f(4);
+          case 5:
+            return _context2.a(2);
+        }
+      }, _callee2, null, [[1, 3, 4, 5]]);
+    }));
+    return _enviar2.apply(this, arguments);
+  }
+  var horaPeru = Number(new Date().toLocaleString("en-US", {
+    timeZone: "America/Lima",
+    hour: "numeric",
+    hour12: false
+  }));
+  var primeroCena = horaPeru >= 17 || horaPeru < 4;
+  var bloques = [{
+    key: "ligero",
+    titulo: t.ligero,
+    sub: t.ligeroSub,
+    icono: "🥣",
+    ids: (carta === null || carta === void 0 || (_carta$recomendados = carta.recomendados) === null || _carta$recomendados === void 0 ? void 0 : _carta$recomendados.ligero) || []
+  }, {
+    key: "cena",
+    titulo: t.cena,
+    sub: t.cenaSub,
+    icono: "🍽️",
+    ids: (carta === null || carta === void 0 || (_carta$recomendados2 = carta.recomendados) === null || _carta$recomendados2 === void 0 ? void 0 : _carta$recomendados2.cena) || []
+  }];
   if (primeroCena) bloques.reverse();
-
-  return (
-    <div style={{ paddingBottom: unidades > 0 ? 90 : 10 }}>
-      <Tarjeta style={{ background: C.dark, color: "#fff", border: "none" }}>
-        <div style={{ fontSize: 21, fontWeight: 700 }}>{t.hola(info.nombre)} 👋</div>
-        <div style={{ fontSize: 13, color: "#E8D9B5", marginTop: 3, letterSpacing: 0.5 }}>{t.domo(info.domo)}</div>
-        <div style={{ fontSize: 14, color: "#D8D2C6", marginTop: 8, lineHeight: 1.45 }}>{t.introCarta}</div>
-      </Tarjeta>
-
-      {recibido && (
-        <Tarjeta style={{ background: C.greenSoft, border: `1px solid #C8DCCB` }}>
-          <div style={{ fontSize: 16.5, fontWeight: 700, color: C.green }}>✓ {t.pedidoRecibido}</div>
-          <div style={{ fontSize: 14, color: C.ink, marginTop: 4 }}>{t.pedidoRecibidoSub}</div>
-        </Tarjeta>
-      )}
-
-      {pedidos.length > 0 && (
-        <Tarjeta>
-          <div style={{ fontSize: 15.5, fontWeight: 700, marginBottom: 6 }}>{t.misPedidos}</div>
-          {pedidos.slice(0, 5).map((pd) => {
-            const color = pd.estado === "aceptado" ? C.green : pd.estado === "rechazado" ? C.red : C.gold;
-            const fondo = pd.estado === "aceptado" ? C.greenSoft : pd.estado === "rechazado" ? C.redSoft : C.goldSoft;
-            return (
-              <div key={pd.id} style={{ borderTop: `1px solid ${C.line}`, padding: "9px 0", display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontSize: 13.5, minWidth: 0 }}>
-                  {(pd.items || []).map((it) => `${it.cantidad}× ${it.nombre}`).join(", ")}
-                  {pd.estado === "rechazado" && pd.motivo_rechazo && <div style={{ fontSize: 12.5, color: C.red, marginTop: 2 }}>{pd.motivo_rechazo}</div>}
-                </div>
-                <span style={{ flexShrink: 0, alignSelf: "flex-start", fontSize: 12, fontWeight: 700, color, background: fondo, borderRadius: 999, padding: "3px 9px" }}>{t.estado[pd.estado] || pd.estado}</span>
-              </div>
-            );
-          })}
-        </Tarjeta>
-      )}
-
-      {error && <Tarjeta><div style={{ color: C.red }}>{error}</div></Tarjeta>}
-      {!carta && !error && <div style={{ textAlign: "center", color: C.muted, padding: 30 }}>{t.cargando}</div>}
-
-      {carta && bloques.map((b) => (
-        <BloqueRecomendados key={b.key} titulo={b.titulo} sub={b.sub} icono={b.icono} ids={b.ids} porId={porId} carrito={carrito} onCambiar={onCambiar} t={t} />
-      ))}
-
-      {carta && (
-        <button onClick={() => setVerTodo((v) => !v)} style={{
-          width: "100%", border: `1px solid ${C.ink}`, background: "transparent", color: C.ink, borderRadius: 14,
-          padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 14,
-        }}>{verTodo ? t.ocultarCarta : `📖 ${t.verCarta}`}</button>
-      )}
-
-      {carta && verTodo && (
-        <Tarjeta>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 8, marginBottom: 2 }}>
-            {categorias.map((c) => {
-              const activa = c === catActiva;
-              return (
-                <button key={c} onClick={() => setCatActiva(c)} style={{
-                  flexShrink: 0, border: `1px solid ${activa ? C.ink : C.line}`, background: activa ? C.ink : "#fff",
-                  color: activa ? "#fff" : C.ink, borderRadius: 999, padding: "7px 13px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                }}>{t.categoria(c)}</button>
-              );
-            })}
-          </div>
-          {(carta.productos || []).filter((p) => p.categoria === catActiva).map((p) => (
-            <FilaProducto key={p.id} p={p} cantidad={carrito[p.id] || 0} onCambiar={onCambiar} t={t} />
-          ))}
-        </Tarjeta>
-      )}
-
-      {unidades > 0 && !hoja && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "linear-gradient(rgba(245,240,230,0), #F5F0E6 35%)" }}>
-          <div style={{ maxWidth: 520, margin: "0 auto" }}>
-            <BotonPrincipal onClick={() => setHoja(true)}>
-              <span style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>{t.verPedido} · {unidades}</span><span>{soles(total)}</span>
-              </span>
-            </BotonPrincipal>
-          </div>
-        </div>
-      )}
-
-      {hoja && (
-        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(20,18,15,0.45)", display: "flex", alignItems: "flex-end", zIndex: 10 }} onClick={() => setHoja(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            background: C.bg, width: "100%", maxWidth: 560, margin: "0 auto", borderRadius: "22px 22px 0 0",
-            padding: "18px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "88vh", overflowY: "auto",
-          }}>
-            <div style={{ width: 40, height: 4, background: C.line, borderRadius: 4, margin: "0 auto 12px" }} />
-            <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 6 }}>{t.tuPedido}</div>
-            <Tarjeta style={{ padding: "4px 14px" }}>
-              {lineas.map((l, i) => (
-                <div key={l.p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 600 }}>{l.p.nombre}</div>
-                    <div style={{ fontSize: 13, color: C.muted }}>{soles(l.cantidad * Number(l.p.precio))}</div>
-                  </div>
-                  <Stepper cantidad={l.cantidad} onMenos={() => onCambiar(l.p.id, -1)} onMas={() => onCambiar(l.p.id, 1)} />
-                </div>
-              ))}
-              <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.ink}`, padding: "11px 0", fontWeight: 700, fontSize: 16 }}>
-                <span>{t.total}</span><span>{soles(total)}</span>
-              </div>
-            </Tarjeta>
-            <Campo label={t.nota}>
-              <input style={inputBase} value={nota} onChange={(e) => setNota(e.target.value)} placeholder={t.notaPh} maxLength={300} />
-            </Campo>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.4 }}>{t.avisoCargo}</div>
-            {errorEnvio && <div role="alert" style={{ background: C.redSoft, color: C.red, borderRadius: 12, padding: "10px 12px", fontSize: 14, marginBottom: 12 }}>{errorEnvio}</div>}
-            <BotonPrincipal onClick={enviar} disabled={enviando || lineas.length === 0}>{enviando ? t.enviando : t.enviarPedido}</BotonPrincipal>
-            <button onClick={() => setHoja(false)} style={{ width: "100%", border: "none", background: "none", color: C.muted, fontSize: 14.5, padding: 12, cursor: "pointer" }}>{t.seguirViendo}</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return React.createElement("div", {
+    style: {
+      paddingBottom: unidades > 0 ? 90 : 10
+    }
+  }, React.createElement(Tarjeta, {
+    style: {
+      background: C.dark,
+      color: "#fff",
+      border: "none"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 21,
+      fontWeight: 700
+    }
+  }, t.hola(info.nombre), " \uD83D\uDC4B"), React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#E8D9B5",
+      marginTop: 3,
+      letterSpacing: 0.5
+    }
+  }, t.domo(info.domo)), React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: "#D8D2C6",
+      marginTop: 8,
+      lineHeight: 1.45
+    }
+  }, t.introCarta)), recibido && React.createElement(Tarjeta, {
+    style: {
+      background: C.greenSoft,
+      border: "1px solid #C8DCCB"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 16.5,
+      fontWeight: 700,
+      color: C.green
+    }
+  }, "\u2713 ", t.pedidoRecibido), React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: C.ink,
+      marginTop: 4
+    }
+  }, t.pedidoRecibidoSub)), pedidos.length > 0 && React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      fontSize: 15.5,
+      fontWeight: 700,
+      marginBottom: 6
+    }
+  }, t.misPedidos), pedidos.slice(0, 5).map(function (pd) {
+    var color = pd.estado === "aceptado" ? C.green : pd.estado === "rechazado" ? C.red : C.gold;
+    var fondo = pd.estado === "aceptado" ? C.greenSoft : pd.estado === "rechazado" ? C.redSoft : C.goldSoft;
+    return React.createElement("div", {
+      key: pd.id,
+      style: {
+        borderTop: "1px solid ".concat(C.line),
+        padding: "9px 0",
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 13.5,
+        minWidth: 0
+      }
+    }, (pd.items || []).map(function (it) {
+      return "".concat(it.cantidad, "\xD7 ").concat(it.nombre);
+    }).join(", "), pd.estado === "rechazado" && pd.motivo_rechazo && React.createElement("div", {
+      style: {
+        fontSize: 12.5,
+        color: C.red,
+        marginTop: 2
+      }
+    }, pd.motivo_rechazo)), React.createElement("span", {
+      style: {
+        flexShrink: 0,
+        alignSelf: "flex-start",
+        fontSize: 12,
+        fontWeight: 700,
+        color: color,
+        background: fondo,
+        borderRadius: 999,
+        padding: "3px 9px"
+      }
+    }, t.estado[pd.estado] || pd.estado));
+  })), error && React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      color: C.red
+    }
+  }, error)), !carta && !error && React.createElement("div", {
+    style: {
+      textAlign: "center",
+      color: C.muted,
+      padding: 30
+    }
+  }, t.cargando), carta && bloques.map(function (b) {
+    return React.createElement(BloqueRecomendados, {
+      key: b.key,
+      titulo: b.titulo,
+      sub: b.sub,
+      icono: b.icono,
+      ids: b.ids,
+      porId: porId,
+      carrito: carrito,
+      onCambiar: onCambiar,
+      t: t
+    });
+  }), carta && React.createElement("button", {
+    onClick: function onClick() {
+      return setVerTodo(function (v) {
+        return !v;
+      });
+    },
+    style: {
+      width: "100%",
+      border: "1px solid ".concat(C.ink),
+      background: "transparent",
+      color: C.ink,
+      borderRadius: 14,
+      padding: "13px",
+      fontSize: 15,
+      fontWeight: 700,
+      cursor: "pointer",
+      marginBottom: 14
+    }
+  }, verTodo ? t.ocultarCarta : "\uD83D\uDCD6 ".concat(t.verCarta)), carta && verTodo && React.createElement(Tarjeta, null, React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 7,
+      overflowX: "auto",
+      paddingBottom: 8,
+      marginBottom: 2
+    }
+  }, categorias.map(function (c) {
+    var activa = c === catActiva;
+    return React.createElement("button", {
+      key: c,
+      onClick: function onClick() {
+        return setCatActiva(c);
+      },
+      style: {
+        flexShrink: 0,
+        border: "1px solid ".concat(activa ? C.ink : C.line),
+        background: activa ? C.ink : "#fff",
+        color: activa ? "#fff" : C.ink,
+        borderRadius: 999,
+        padding: "7px 13px",
+        fontSize: 13.5,
+        fontWeight: 600,
+        cursor: "pointer"
+      }
+    }, t.categoria(c));
+  })), (carta.productos || []).filter(function (p) {
+    return p.categoria === catActiva;
+  }).map(function (p) {
+    return React.createElement(FilaProducto, {
+      key: p.id,
+      p: p,
+      cantidad: carrito[p.id] || 0,
+      onCambiar: onCambiar,
+      t: t
+    });
+  })), unidades > 0 && !hoja && React.createElement("div", {
+    style: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      padding: "10px 14px calc(10px + env(safe-area-inset-bottom))",
+      background: "linear-gradient(rgba(245,240,230,0), #F5F0E6 35%)"
+    }
+  }, React.createElement("div", {
+    style: {
+      maxWidth: 520,
+      margin: "0 auto"
+    }
+  }, React.createElement(BotonPrincipal, {
+    onClick: function onClick() {
+      return setHoja(true);
+    }
+  }, React.createElement("span", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between"
+    }
+  }, React.createElement("span", null, t.verPedido, " \xB7 ", unidades), React.createElement("span", null, soles(total)))))), hoja && React.createElement("div", {
+    role: "dialog",
+    "aria-modal": "true",
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(20,18,15,0.45)",
+      display: "flex",
+      alignItems: "flex-end",
+      zIndex: 10
+    },
+    onClick: function onClick() {
+      return setHoja(false);
+    }
+  }, React.createElement("div", {
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    },
+    style: {
+      background: C.bg,
+      width: "100%",
+      maxWidth: 560,
+      margin: "0 auto",
+      borderRadius: "22px 22px 0 0",
+      padding: "18px 16px calc(18px + env(safe-area-inset-bottom))",
+      maxHeight: "88vh",
+      overflowY: "auto"
+    }
+  }, React.createElement("div", {
+    style: {
+      width: 40,
+      height: 4,
+      background: C.line,
+      borderRadius: 4,
+      margin: "0 auto 12px"
+    }
+  }), React.createElement("div", {
+    style: {
+      fontSize: 19,
+      fontWeight: 700,
+      marginBottom: 6
+    }
+  }, t.tuPedido), React.createElement(Tarjeta, {
+    style: {
+      padding: "4px 14px"
+    }
+  }, lineas.map(function (l, i) {
+    return React.createElement("div", {
+      key: l.p.id,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "11px 0",
+        borderTop: i === 0 ? "none" : "1px solid ".concat(C.line)
+      }
+    }, React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 14.5,
+        fontWeight: 600
+      }
+    }, l.p.nombre), React.createElement("div", {
+      style: {
+        fontSize: 13,
+        color: C.muted
+      }
+    }, soles(l.cantidad * Number(l.p.precio)))), React.createElement(Stepper, {
+      cantidad: l.cantidad,
+      onMenos: function onMenos() {
+        return onCambiar(l.p.id, -1);
+      },
+      onMas: function onMas() {
+        return onCambiar(l.p.id, 1);
+      }
+    }));
+  }), React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      borderTop: "1px solid ".concat(C.ink),
+      padding: "11px 0",
+      fontWeight: 700,
+      fontSize: 16
+    }
+  }, React.createElement("span", null, t.total), React.createElement("span", null, soles(total)))), React.createElement(Campo, {
+    label: t.nota
+  }, React.createElement("input", {
+    style: inputBase,
+    value: nota,
+    onChange: function onChange(e) {
+      return setNota(e.target.value);
+    },
+    placeholder: t.notaPh,
+    maxLength: 300
+  })), React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: C.muted,
+      marginBottom: 12,
+      lineHeight: 1.4
+    }
+  }, t.avisoCargo), errorEnvio && React.createElement("div", {
+    role: "alert",
+    style: {
+      background: C.redSoft,
+      color: C.red,
+      borderRadius: 12,
+      padding: "10px 12px",
+      fontSize: 14,
+      marginBottom: 12
+    }
+  }, errorEnvio), React.createElement(BotonPrincipal, {
+    onClick: enviar,
+    disabled: enviando || lineas.length === 0
+  }, enviando ? t.enviando : t.enviarPedido), React.createElement("button", {
+    onClick: function onClick() {
+      return setHoja(false);
+    },
+    style: {
+      width: "100%",
+      border: "none",
+      background: "none",
+      color: C.muted,
+      fontSize: 14.5,
+      padding: 12,
+      cursor: "pointer"
+    }
+  }, t.seguirViendo))));
 }
-
-// ---------- app ----------
 function App() {
-  const codigo = (new URLSearchParams(window.location.search).get("c") || "").trim().toUpperCase();
-  const [lang, setLangState] = useState(idiomaInicial);
-  const t = TXT[lang];
-  const [info, setInfo] = useState(null);
-  const [estadoCarga, setEstadoCarga] = useState("cargando"); // cargando | ok | invalido | sinconexion
-  const [editando, setEditando] = useState(false);
-
+  var codigo = (new URLSearchParams(window.location.search).get("c") || "").trim().toUpperCase();
+  var _useState29 = useState(idiomaInicial),
+    _useState30 = _slicedToArray(_useState29, 2),
+    lang = _useState30[0],
+    setLangState = _useState30[1];
+  var t = TXT[lang];
+  var _useState31 = useState(null),
+    _useState32 = _slicedToArray(_useState31, 2),
+    info = _useState32[0],
+    setInfo = _useState32[1];
+  var _useState33 = useState("cargando"),
+    _useState34 = _slicedToArray(_useState33, 2),
+    estadoCarga = _useState34[0],
+    setEstadoCarga = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    editando = _useState36[0],
+    setEditando = _useState36[1];
   function setLang(l) {
     setLangState(l);
-    try { localStorage.setItem("ms_huesped_idioma", l); } catch (e) {}
+    try {
+      localStorage.setItem("ms_huesped_idioma", l);
+    } catch (e) {}
   }
-
-  const cargar = useCallback(() => {
-    if (!codigo) { setEstadoCarga("invalido"); return; }
+  var cargar = useCallback(function () {
+    if (!codigo) {
+      setEstadoCarga("invalido");
+      return;
+    }
     setEstadoCarga("cargando");
-    api(`/api/huesped/${encodeURIComponent(codigo)}`)
-      .then((d) => { setInfo(d); setEstadoCarga("ok"); })
-      .catch((e) => setEstadoCarga(e.status === 404 ? "invalido" : "sinconexion"));
+    api("/api/huesped/".concat(encodeURIComponent(codigo))).then(function (d) {
+      setInfo(d);
+      setEstadoCarga("ok");
+    }).catch(function (e) {
+      return setEstadoCarga(e.status === 404 ? "invalido" : "sinconexion");
+    });
   }, [codigo]);
-  useEffect(() => { cargar(); }, [cargar]);
-  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
-
-  let contenido;
+  useEffect(function () {
+    cargar();
+  }, [cargar]);
+  useEffect(function () {
+    document.documentElement.lang = lang;
+  }, [lang]);
+  var contenido;
   if (estadoCarga === "cargando") {
-    contenido = <div style={{ textAlign: "center", color: C.muted, padding: 40 }}>{t.cargando}</div>;
+    contenido = React.createElement("div", {
+      style: {
+        textAlign: "center",
+        color: C.muted,
+        padding: 40
+      }
+    }, t.cargando);
   } else if (estadoCarga === "invalido") {
-    contenido = (
-      <Tarjeta style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{t.enlaceInvalido}</div>
-        <div style={{ color: C.muted, fontSize: 14.5 }}>{t.enlaceInvalidoSub}</div>
-      </Tarjeta>
-    );
+    contenido = React.createElement(Tarjeta, {
+      style: {
+        textAlign: "center"
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 17,
+        fontWeight: 700,
+        marginBottom: 6
+      }
+    }, t.enlaceInvalido), React.createElement("div", {
+      style: {
+        color: C.muted,
+        fontSize: 14.5
+      }
+    }, t.enlaceInvalidoSub));
   } else if (estadoCarga === "sinconexion") {
-    contenido = (
-      <Tarjeta style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 15.5, marginBottom: 14 }}>{t.sinConexion}</div>
-        <BotonPrincipal onClick={cargar}>{t.reintentar}</BotonPrincipal>
-      </Tarjeta>
-    );
+    contenido = React.createElement(Tarjeta, {
+      style: {
+        textAlign: "center"
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 15.5,
+        marginBottom: 14
+      }
+    }, t.sinConexion), React.createElement(BotonPrincipal, {
+      onClick: cargar
+    }, t.reintentar));
   } else if (info.estado === "check_in") {
-    contenido = <Carta t={t} lang={lang} codigo={codigo} info={info} />;
+    contenido = React.createElement(Carta, {
+      t: t,
+      lang: lang,
+      codigo: codigo,
+      info: info
+    });
   } else if (info.estado === "check_out") {
-    contenido = (
-      <Tarjeta style={{ textAlign: "center", padding: "30px 20px" }}>
-        <div style={{ fontSize: 30, marginBottom: 8 }} aria-hidden="true">🌿</div>
-        <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 6 }}>{t.gracias}</div>
-        <div style={{ color: C.muted, fontSize: 14.5 }}>{t.graciasSub}</div>
-      </Tarjeta>
-    );
+    contenido = React.createElement(Tarjeta, {
+      style: {
+        textAlign: "center",
+        padding: "30px 20px"
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 30,
+        marginBottom: 8
+      },
+      "aria-hidden": "true"
+    }, "\uD83C\uDF3F"), React.createElement("div", {
+      style: {
+        fontSize: 19,
+        fontWeight: 700,
+        marginBottom: 6
+      }
+    }, t.gracias), React.createElement("div", {
+      style: {
+        color: C.muted,
+        fontSize: 14.5
+      }
+    }, t.graciasSub));
   } else {
-    // confirmada: antes de llegar
-    const mostrarForm = !info.datosConfirmados || editando;
-    contenido = (
-      <div>
-        <div style={{ padding: "8px 4px 16px" }}>
-          <div style={{ fontSize: 24, fontWeight: 700 }}>{t.hola(info.datosEnviados?.nombreCompleto || info.nombre)} 👋</div>
-          <div style={{ fontSize: 15, color: C.gold, fontWeight: 600, marginTop: 3 }}>{t.teEsperamos(fechaBonita(info.fechaLlegada, lang))}</div>
-          {mostrarForm && <div style={{ fontSize: 14.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{t.introDatos}</div>}
-        </div>
-        {mostrarForm ? (
-          <FormularioDatos t={t} codigo={codigo} inicial={info.datosEnviados || (info.nombre ? { nombreCompleto: info.nombre } : null)}
-            alGuardar={() => { setEditando(false); cargar(); window.scrollTo({ top: 0 }); }} />
-        ) : (
-          <DatosConfirmados t={t} datos={info.datosEnviados} onEditar={() => setEditando(true)} />
-        )}
-      </div>
-    );
+    var _info$datosEnviados;
+    var mostrarForm = !info.datosConfirmados || editando;
+    contenido = React.createElement("div", null, React.createElement("div", {
+      style: {
+        padding: "8px 4px 16px"
+      }
+    }, React.createElement("div", {
+      style: {
+        fontSize: 24,
+        fontWeight: 700
+      }
+    }, t.hola(((_info$datosEnviados = info.datosEnviados) === null || _info$datosEnviados === void 0 ? void 0 : _info$datosEnviados.nombreCompleto) || info.nombre), " \uD83D\uDC4B"), React.createElement("div", {
+      style: {
+        fontSize: 15,
+        color: C.gold,
+        fontWeight: 600,
+        marginTop: 3
+      }
+    }, t.teEsperamos(fechaBonita(info.fechaLlegada, lang))), mostrarForm && React.createElement("div", {
+      style: {
+        fontSize: 14.5,
+        color: C.muted,
+        marginTop: 8,
+        lineHeight: 1.5
+      }
+    }, t.introDatos)), mostrarForm ? React.createElement(FormularioDatos, {
+      t: t,
+      codigo: codigo,
+      inicial: info.datosEnviados || (info.nombre ? {
+        nombreCompleto: info.nombre
+      } : null),
+      alGuardar: function alGuardar() {
+        setEditando(false);
+        cargar();
+        window.scrollTo({
+          top: 0
+        });
+      }
+    }) : React.createElement(DatosConfirmados, {
+      t: t,
+      datos: info.datosEnviados,
+      onEditar: function onEditar() {
+        return setEditando(true);
+      }
+    }));
   }
-
-  return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, position: "relative" }}>
-      <SelectorIdioma lang={lang} setLang={setLang} />
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 14px 24px" }}>
-        <Marca />
-        <div style={{ height: 14 }} />
-        {contenido}
-        {WHATSAPP_HOTEL && (
-          <div style={{ textAlign: "center", fontSize: 13, color: C.muted, marginTop: 8 }}>
-            <a href={`https://wa.me/${WHATSAPP_HOTEL}`} style={{ color: C.gold }}>WhatsApp</a>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: C.bg,
+      color: C.ink,
+      position: "relative"
+    }
+  }, React.createElement(SelectorIdioma, {
+    lang: lang,
+    setLang: setLang
+  }), React.createElement("div", {
+    style: {
+      maxWidth: 520,
+      margin: "0 auto",
+      padding: "0 14px 24px"
+    }
+  }, React.createElement(Marca, null), React.createElement("div", {
+    style: {
+      height: 14
+    }
+  }), contenido, WHATSAPP_HOTEL && React.createElement("div", {
+    style: {
+      textAlign: "center",
+      fontSize: 13,
+      color: C.muted,
+      marginTop: 8
+    }
+  }, React.createElement("a", {
+    href: "https://wa.me/".concat(WHATSAPP_HOTEL),
+    style: {
+      color: C.gold
+    }
+  }, "WhatsApp"))));
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
+</script>
+</body>
+</html>
