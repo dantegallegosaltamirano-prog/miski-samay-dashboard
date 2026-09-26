@@ -41,6 +41,7 @@ function navItems(sesion) {
 const core = [
 { icon: "▦", label: "Dashboard", active: true },
 { icon: "→", label: "Check-in", href: "llegadas.html" },
+{ icon: "💬", label: "Diálogo con Huésped", href: "dialogo.html", badgeKey: "pedidosHuesped" },
 { icon: "🍽️", label: "Cargar consumos", href: "consumos.html" },
 { icon: "←", label: "Check-out", href: "checkout.html" },
 { icon: "📋", label: "Procesar comprobantes", href: "control.html" },
@@ -261,6 +262,16 @@ const [staffHousekeeping, setStaffHousekeeping] = useState([]);
 const [asignando, setAsignando] = useState({});
 const [adminAbierto, setAdminAbierto] = useState(false);
 const navItemsData = navItems(sesion);
+// Pedidos que los huéspedes mandaron desde su celular y esperan que
+// alguien del staff los acepte (Diálogo con Huésped). Se pide APARTE del
+// Promise.all de abajo a propósito: si esta ruta fallara, no debe tumbar
+// el resto del dashboard.
+const [pedidosHuesped, setPedidosHuesped] = useState(0);
+const cargarPedidosHuesped = useCallback(() => {
+apiGet("/api/pedidos-huesped/pendientes")
+.then((d) => setPedidosHuesped(Array.isArray(d) ? d.length : 0))
+.catch(() => {});
+}, []);
 
 const cargarTodo = useCallback(async () => {
 try {
@@ -287,15 +298,19 @@ setError("No se pudo conectar con el backend: " + API_BASE_URL);
 }, []);
 
 useEffect(() => {
-// Al abrir el dashboard, forzamos una sincronización con Aloha antes
-// de cargar los datos, para que el panel arranque con información
-// lo más actualizada posible (no esperamos al cron de fondo).
+// Velocidad (25 set): antes el panel ESPERABA a que terminara la
+// sincronización completa con Aloha (domo por domo) antes de mostrar
+// nada — por eso tardaba en abrir. Ahora muestra los datos de inmediato
+// y la sincronización corre en segundo plano; cuando termina, se
+// refresca solo. (El cron del servidor igual sincroniza cada 20 min.)
+cargarTodo();
+cargarPedidosHuesped();
 fetch(`${API_BASE_URL}/api/sync/ical-now`)
 .catch(() => {})
 .finally(() => cargarTodo());
-const intervalo = setInterval(cargarTodo, REFRESH_MS);
+const intervalo = setInterval(() => { cargarTodo(); cargarPedidosHuesped(); }, REFRESH_MS);
 return () => clearInterval(intervalo);
-}, [cargarTodo]);
+}, [cargarTodo, cargarPedidosHuesped]);
 
 const tomarActividad = async (id) => {
 setActividad((prev) => prev.map((a) => (a.id === id ? { ...a, estado: "en_preparacion" } : a)));
@@ -336,7 +351,7 @@ return (
 </div>
 <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
 {navItemsData.core.map((item) => (
-<ItemNav key={item.label} item={item} />
+<ItemNav key={item.label} item={item} badge={item.badgeKey === "pedidosHuesped" ? pedidosHuesped : 0} />
 ))}
 {navItemsData.admin.length > 0 && (
 <React.Fragment>
@@ -618,7 +633,7 @@ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, paddi
 );
 }
 
-function ItemNav({ item }) {
+function ItemNav({ item, badge }) {
 const construido = item.active || !!item.href;
 return (
 <div onClick={() => { if (item.href) window.location.href = item.href; }} style={{
@@ -633,6 +648,9 @@ cursor: item.href ? "pointer" : "default",
 </div>
 {!construido && (
 <span style={{ fontSize: 9, color: "#5C5850", border: "1px solid #2A2730", borderRadius: 999, padding: "2px 7px", letterSpacing: 0.3 }}>Próximamente</span>
+)}
+{badge > 0 && (
+<span title="Pedidos de huéspedes por confirmar" style={{ background: T.gold, color: "#1C1A20", borderRadius: 999, minWidth: 20, height: 20, fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 6px" }}>{badge}</span>
 )}
 </div>
 );
