@@ -37,6 +37,12 @@ wa: "#25D366",
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 const SESION_KEY = "ms_staff_sesion";
 const REFRESH_MS = 30000;
+// SUSPENDIDO (29 set, decisión de Dante): el formulario de datos que la app
+// le mandaba al huésped ANTES de llegar casi nadie lo llenaba (desconfianza:
+// sienten que se les pide información). Ahora los datos los registra
+// recepción en el Formulario Google. La sección queda OCULTA, no borrada:
+// para volver a usarla, cambiar a true.
+const MOSTRAR_FORMULARIO_PRE_LLEGADA = false;
 
 function cargarSesion() {
 try { const raw = localStorage.getItem(SESION_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -210,7 +216,7 @@ return (
 {tipo === "llegada" && (
 confirmado ? (
 <button onClick={() => setVerDatos((v) => !v)} style={{ background: "rgba(107,143,113,0.15)", color: T.green, border: "1px solid rgba(107,143,113,0.4)", borderRadius: 999, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
-✓ Datos confirmados {verDatos ? "▴" : "▾"}
+✓ Datos confirmados{datos && datos.fuente === "formulario_google" ? " (Google)" : ""} {verDatos ? "▴" : "▾"}
 </button>
 ) : (
 <span style={{ background: "rgba(184,136,115,0.15)", color: T.amber, borderRadius: 999, padding: "4px 10px", fontSize: 11.5 }}>Sin confirmar</span>
@@ -223,6 +229,7 @@ confirmado ? (
 <div><b>{datos.nombreCompleto}</b> · {datos.tipoDocumento} {datos.numeroDocumento}</div>
 <div style={{ color: T.ivoryMuted }}>{[datos.pais, datos.celular, datos.correo].filter(Boolean).join(" · ")}</div>
 {datos.horaLlegada && <div>🕒 Llega: {datos.horaLlegada}</div>}
+{datos.domo && <div>🏕️ Domo que indicó: {datos.domo}</div>}
 {(datos.acompanantes || []).map((a, i) => <div key={i}>👤 {a.nombreCompleto}{a.numeroDocumento ? ` · ${a.tipoDocumento || ""} ${a.numeroDocumento}` : ""}</div>)}
 {datos.comentario && <div style={{ color: T.amber }}>💬 “{datos.comentario}”</div>}
 </div>
@@ -247,16 +254,77 @@ style={{ flex: "1 1 170px", minWidth: 0, background: T.bg, border: `1px solid ${
 }
 
 // ---------------------------------------------------------------------
+// Formulario Google (27-28 set): lo llena el PERSONAL de recepción después
+// de instalar al huésped (cuando hay cortes de luz). Estas son las respuestas que no se pudieron unir solas
+// con una reserva. Recepción elige a qué reserva van (o las descarta si
+// fueron pruebas). Al asignar, los datos quedan pre-llenados en su check-in.
+function sinTildes(v) { return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function parecido(a, b) {
+const ta = sinTildes(a).split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+const tb = sinTildes(b).split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+return ta.filter((t) => tb.includes(t)).length;
+}
+function TarjetaRegistroGoogle({ g, reservas, hoy, alTerminar }) {
+const opciones = [...reservas].sort((a, b) => parecido(g.nombre_completo, b.nombre_completo) - parecido(g.nombre_completo, a.nombre_completo));
+const [reservaId, setReservaId] = useState(opciones.length && parecido(g.nombre_completo, opciones[0].nombre_completo) > 0 ? opciones[0].id : "");
+const [ocupado, setOcupado] = useState(false);
+async function asignar() {
+if (!reservaId) { alert("Elige a qué reserva corresponde."); return; }
+setOcupado(true);
+try { await apiPost(`/api/registros-google/${g.id}/asignar`, { reservaId }); alTerminar(); }
+catch (e) { alert("No se pudo asignar: " + e.message); setOcupado(false); }
+}
+async function descartar() {
+if (!window.confirm(`¿Descartar el registro de ${g.nombre_completo || "este huésped"}? (por ejemplo, si fue una prueba o está repetido)`)) return;
+setOcupado(true);
+try { await apiPost(`/api/registros-google/${g.id}/descartar`); alTerminar(); }
+catch (e) { alert("No se pudo descartar: " + e.message); setOcupado(false); }
+}
+const acomp = Array.isArray(g.acompanantes) ? g.acompanantes : [];
+return (
+<div style={{ background: T.card, border: `1px solid rgba(184,136,115,0.5)`, borderRadius: 12, padding: 14 }}>
+<div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+<div>
+<div style={{ fontSize: 14.5, fontWeight: 600 }}>{g.nombre_completo || "(sin nombre)"} {g.domo && <span style={{ color: T.gold }}>· dice {g.domo}</span>}</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+{[g.tipo_documento && `${g.tipo_documento} ${g.numero_documento || ""}`, g.pais, g.celular, g.correo].filter(Boolean).join(" · ")}
+</div>
+{g.respuestas_extra && g.respuestas_extra.nombreReserva && <div style={{ fontSize: 12, marginTop: 3 }}>📖 Reserva a nombre de: {g.respuestas_extra.nombreReserva}</div>}
+{g.respuestas_extra && Array.isArray(g.respuestas_extra.fotos) && g.respuestas_extra.fotos.length > 0 && <div style={{ fontSize: 12, marginTop: 3 }}>🪪 {g.respuestas_extra.fotos.map((u, i) => <a key={i} href={u} target="_blank" rel="noopener" style={{ color: T.gold, marginRight: 8 }}>Ver foto {i + 1}</a>)}</div>}
+{acomp.length > 0 && <div style={{ fontSize: 12, marginTop: 3 }}>👥 {acomp.map((a) => a.nombreCompleto + (a.numeroDocumento ? ` (${a.numeroDocumento})` : "")).join(", ")}</div>}
+<div style={{ fontSize: 11, color: T.amber, marginTop: 4 }}>No se unió solo: {g.motivo || "revisar"} · recibido {haceCuanto(g.recibido_en)}</div>
+</div>
+</div>
+<div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+<select value={reservaId} onChange={(e) => setReservaId(e.target.value)} style={{ flex: "1 1 260px", minWidth: 0, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 13 }}>
+<option value="">¿A qué reserva corresponde?</option>
+{opciones.map((r) => (
+<option key={r.id} value={r.id}>
+{(r.nombre_completo && r.nombre_completo !== "Por confirmar en check-in" ? r.nombre_completo : "Por confirmar")} · {r.estado === "check_in" ? `alojado ${r.domo || ""}` : `llega ${fechaCorta(r.fecha_llegada, hoy)}`} · {r.canal_origen}
+</option>
+))}
+</select>
+<button disabled={ocupado} onClick={asignar} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Asignar</button>
+<button disabled={ocupado} onClick={descartar} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "9px 12px", fontSize: 12.5, cursor: "pointer" }}>Descartar</button>
+</div>
+</div>
+);
+}
+
+// ---------------------------------------------------------------------
 function PantallaDialogo({ sesion }) {
 const [lista, setLista] = useState(null);
 const [hoy, setHoy] = useState(null);
 const [pedidos, setPedidos] = useState([]);
+const [registros, setRegistros] = useState([]);
 const [error, setError] = useState(null);
 
 const cargar = useCallback(async () => {
 try {
 const [d, p] = await Promise.all([apiGet("/api/dialogo/reservas"), apiGet("/api/pedidos-huesped/pendientes")]);
 setLista(d.reservas || []); setHoy(d.hoy); setPedidos(Array.isArray(p) ? p : []); setError(null);
+// Aparte: si esta ruta fallara (servidor viejo), no debe tumbar la pantalla.
+apiGet("/api/registros-google").then((g) => setRegistros(Array.isArray(g) ? g : [])).catch(() => {});
 } catch (e) {
 setError("No se pudo conectar con el servidor.");
 }
@@ -264,6 +332,18 @@ setError("No se pudo conectar con el servidor.");
 useEffect(() => { cargar(); const iv = setInterval(cargar, REFRESH_MS); return () => clearInterval(iv); }, [cargar]);
 
 const llegadas = (lista || []).filter((r) => r.estado === "confirmada");
+const registrosSinAsignar = registros.filter((g) => g.estado === "sin_reserva");
+// Una fila por reserva (si recepción mandó el formulario 2 veces, vale el último).
+const ultimoPorReserva = new Map();
+registros.filter((g) => g.estado === "asignado" && g.reserva_id).forEach((g) => {
+const prev = ultimoPorReserva.get(g.reserva_id);
+if (!prev || new Date(g.recibido_en) > new Date(prev.recibido_en)) ultimoPorReserva.set(g.reserva_id, g);
+});
+const registrosAsignadosTodos = [...ultimoPorReserva.values()];
+// Lo que Dante vigila: registrados por recepción cuyo check-in en la app sigue pendiente.
+const faltaCheckin = registrosAsignadosTodos.filter((g) => g.reserva_estado === "confirmada")
+.sort((a, b) => new Date(a.recibido_en) - new Date(b.recibido_en));
+const registrosCompletados = registrosAsignadosTodos.filter((g) => g.reserva_estado !== "confirmada");
 const alojados = (lista || []).filter((r) => r.estado === "check_in");
 const titulo = (txt, n, sub) => (
 <div style={{ margin: "26px 0 10px" }}>
@@ -277,13 +357,56 @@ return (
 <div style={{ maxWidth: 860, margin: "0 auto" }}>
 <a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
 <h1 style={{ fontSize: 22, margin: "10px 0 4px" }}>💬 Diálogo con Huésped</h1>
-<div style={{ fontSize: 12.5, color: T.ivoryMuted }}>Antes de llegar: el huésped confirma sus datos. Ya alojado: pide desde su celular. Todo pasa por aquí antes de cargarse a la cuenta.</div>
+<div style={{ fontSize: 12.5, color: T.ivoryMuted }}>Datos que registra recepción en el Formulario Google (se cargan solos en el check-in) y pedidos que hacen los huéspedes desde su celular. Nada se carga a la cuenta sin que el staff lo revise.</div>
 
 {error && <div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginTop: 16 }}>⚠ {error}</div>}
 {lista === null && !error && <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 40 }}>Cargando…</div>}
 
 {lista !== null && (
 <React.Fragment>
+{titulo("📋 Registrados por recepción (Formulario Google) — falta completar check-in", faltaCheckin.length, "Huéspedes ya instalados cuyos datos llegaron por el formulario. Sus datos ya están cargados en el check-in: solo revisar, poner la tarifa y completar.")}
+{faltaCheckin.length === 0 ? (
+<div style={{ color: T.ivoryMuted, fontSize: 12.5 }}>Nada pendiente. ✓</div>
+) : (
+<div style={{ display: "grid", gap: 8 }}>
+{faltaCheckin.map((g) => {
+const horas = (Date.now() - new Date(g.recibido_en).getTime()) / 3600000;
+const atrasado = horas >= 2;
+return (
+<div key={g.id} style={{ background: T.card, border: `1px solid ${atrasado ? "rgba(168,62,50,0.6)" : T.cardBorder}`, borderRadius: 12, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+<div style={{ minWidth: 0 }}>
+<div style={{ fontSize: 14.5, fontWeight: 600 }}>{g.domo && <span style={{ color: T.gold }}>{g.domo} · </span>}{g.nombre_completo}</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+Reserva de {g.reserva_nombre || "—"} · {g.reserva_canal || ""} · registrado {haceCuanto(g.recibido_en)}
+{Array.isArray(g.acompanantes) && g.acompanantes.length > 0 ? ` · ${g.acompanantes.length} acompañante(s)` : ""}
+</div>
+{atrasado && <div style={{ fontSize: 11.5, color: "#E8B4AC", marginTop: 3 }}>⚠ Hace más de 2 horas y el check-in sigue sin completarse en la app</div>}
+</div>
+<a href={`checkin.html?id=${g.reserva_id}`} style={{ background: T.gold, color: "#1C1A20", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>Completar check-in →</a>
+</div>
+);
+})}
+</div>
+)}
+
+{registrosSinAsignar.length > 0 && (
+<React.Fragment>
+{titulo("📋 Formulario Google — no se pudo unir solo, elige la reserva", registrosSinAsignar.length, "El nombre no coincide con ninguna reserva (o hay varias a nombre del mismo titular). Elige a cuál corresponde; si fue una prueba, descártalo.")}
+<div style={{ display: "grid", gap: 10 }}>{registrosSinAsignar.map((g) => <TarjetaRegistroGoogle key={g.id} g={g} reservas={lista} hoy={hoy} alTerminar={cargar} />)}</div>
+</React.Fragment>
+)}
+
+{registrosCompletados.length > 0 && (
+<details style={{ marginTop: 10, fontSize: 12.5, color: T.ivoryMuted }}>
+<summary style={{ cursor: "pointer" }}>Registrados por formulario con check-in ya completado (últimos 3 días): {registrosCompletados.length}</summary>
+<div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+{registrosCompletados.map((g) => (
+<div key={g.id}>✓ {g.nombre_completo} → {g.reserva_nombre || "—"}{g.reserva_domo ? ` (${g.reserva_domo})` : ""}</div>
+))}
+</div>
+</details>
+)}
+
 {titulo("Pedidos de huéspedes por confirmar", pedidos.length, pedidos.length ? "Revisa disponibilidad y acepta — recién ahí se suma a su cuenta." : null)}
 {pedidos.length === 0 ? (
 <div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 12, padding: 16, fontSize: 12.5, textAlign: "center" }}>No hay pedidos esperando. Se revisa solo cada 30 segundos.</div>
@@ -291,12 +414,12 @@ return (
 <div style={{ display: "grid", gap: 10 }}>{pedidos.map((p) => <TarjetaPedido key={p.id} pedido={p} sesion={sesion} alTerminar={cargar} />)}</div>
 )}
 
-{titulo("Por llegar — enviar formulario de datos", llegadas.length, "Llegadas de hoy a 7 días que todavía no tienen check-in.")}
-{llegadas.length === 0 ? (
+{MOSTRAR_FORMULARIO_PRE_LLEGADA && titulo("Por llegar — enviar formulario de datos", llegadas.length, "Llegadas de hoy a 7 días que todavía no tienen check-in.")}
+{MOSTRAR_FORMULARIO_PRE_LLEGADA && (llegadas.length === 0 ? (
 <div style={{ color: T.ivoryMuted, fontSize: 12.5 }}>No hay llegadas próximas sin check-in.</div>
 ) : (
 <div style={{ display: "grid", gap: 10 }}>{llegadas.map((r) => <FilaHuesped key={r.id} r={r} hoy={hoy} tipo="llegada" recargar={cargar} />)}</div>
-)}
+))}
 
 {titulo("Alojados ahora — enviar carta", alojados.length, "Huéspedes con check-in hecho. La carta también se puede enviar al terminar el check-in.")}
 {alojados.length === 0 ? (
