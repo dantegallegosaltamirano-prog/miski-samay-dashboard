@@ -216,6 +216,37 @@ function DesgloseMixto({ partes, onChange, total, simbolo }) {
   );
 }
 
+// Cobros de OTA (1 oct): cambia quién cobró el hospedaje de una reserva
+// Booking/Expedia (por si no se marcó en el check-in o se marcó mal).
+function BotonModalidadCobro({ reservaId, canal, actual, onCambio }) {
+  const [guardando, setGuardando] = useState(false);
+  const nueva = actual === "ota" ? "hotel" : "ota";
+  async function cambiar() {
+    const texto = nueva === "ota"
+      ? `¿El hospedaje lo cobró ${canal} (${canal} collect)? No se cobrará aquí y quedará en Cobros pendientes de OTA.`
+      : "¿Cambiar a Hotel collect? El hospedaje se cobrará aquí en el check-out.";
+    if (!window.confirm(texto)) return;
+    setGuardando(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/reservas/${reservaId}/modalidad-cobro`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modalidad: nueva }),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      onCambio && onCambio();
+    } catch (e) {
+      alert("No se pudo cambiar: " + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+  return (
+    <button onClick={cambiar} disabled={guardando} style={{ marginTop: 8, marginBottom: 6, background: "transparent", border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>
+      {guardando ? "Guardando…" : nueva === "ota" ? `🌐 ¿Lo cobró ${canal}? Marcar como ${canal} collect` : "🏨 Cambiar a Hotel collect"}
+    </button>
+  );
+}
+
 function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
   const hospedajeUsd = Number(folio.montoAlojamientoUsd) || 0;
   const detalle = Array.isArray(folio.detalleConsumos) ? folio.detalleConsumos : [];
@@ -292,10 +323,17 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
         </div>
 
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🏕️ Hospedaje</div>
+        {folio.modalidadCobro === "ota" ? (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
+            <span>Estadía completa — pagada a {folio.canalOrigen || "la OTA"}</span>
+            <span style={{ fontWeight: 700, color: T.green }}>Pagado</span>
+          </div>
+        ) : (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
           <span>Estadía completa</span>
           <span style={{ fontWeight: 700, color: T.gold }}>US$ {fmt(hospedajeUsd)}</span>
         </div>
+        )}
 
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${T.cardBorder}`, paddingBottom: 6 }}>🍽️ Consumo</div>
         {detalle.length === 0 ? (
@@ -1537,7 +1575,9 @@ function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onC
         <div key={d.reservaId} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{d.domoCodigo || "?"} — {d.nombreCompleto || "Por confirmar"}</div>
           <div style={{ fontSize: 12.5, color: T.ivoryMuted, marginBottom: 6 }}>
-            Hospedaje: US$ {fmt(d.montoAlojamientoUsd)}
+            {d.modalidadCobro === "ota"
+              ? <span style={{ color: T.green }}>Hospedaje: pagado a {d.canalOrigen || "la OTA"} (US$ {fmt(d.montoAlojamientoOtaUsd)}, queda en Cobros pendientes de OTA)</span>
+              : <span>Hospedaje: US$ {fmt(d.montoAlojamientoUsd)}</span>}
             {d.adelantoPagado > 0 && <span> · Adelanto ya pagado: US$ {fmt(d.adelantoPagado)}</span>}
           </div>
           {d.detalleConsumos.length > 0 && (
@@ -1985,6 +2025,14 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
   function irAVistaPrevia() {
     const pagos = construirPagosCombo();
     if (pagos.length === 0) {
+      // Cobros de OTA: si TODOS los domos son Booking/Expedia collect y no
+      // hubo consumos, se cierra sin cobrar nada (el hospedaje queda en
+      // Cobros pendientes de OTA).
+      const todosOta = (folioCombo?.domos || []).length > 0 && folioCombo.domos.every(d => d.modalidadCobro === "ota");
+      if (todosOta) {
+        if (window.confirm("El hospedaje de todos estos domos lo cobró la OTA y no hay consumos por cobrar. ¿Cerrar las cuentas? (El hospedaje queda en Cobros pendientes de OTA.)")) confirmarCheckout();
+        return;
+      }
       alert("No hay saldo pendiente por cobrar (los adelantos cubren todo). Contacta soporte si esto no es correcto.");
       return;
     }
@@ -2574,6 +2622,12 @@ function CheckoutPantalla() {
   function irAVistaPrevia() {
     const pagos = construirPagos();
     if (pagos.length === 0) {
+      // Cobros de OTA: hospedaje cobrado por Booking/Expedia y sin consumos —
+      // se cierra la cuenta sin cobrar nada aquí.
+      if (folio && folio.modalidadCobro === "ota") {
+        if (window.confirm(`El hospedaje lo cobró ${folio.canalOrigen || "la OTA"} y no hay consumos por cobrar. ¿Cerrar la cuenta? (El hospedaje queda en Cobros pendientes de OTA.)`)) confirmarCheckout();
+        return;
+      }
       alert("No hay saldo pendiente por cobrar (el adelanto cubre todo). Contacta soporte si esto no es correcto.");
       return;
     }
@@ -2812,8 +2866,20 @@ function CheckoutPantalla() {
             </div>
 
             {/* HOSPEDAJE */}
+            {folio.modalidadCobro === "ota" ? (
+            <div style={{ background: T.card, border: "1px solid rgba(107,143,113,0.5)", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>🏕️ Hospedaje — 🌐 {folio.canalOrigen} collect</div>
+              <div style={{ fontSize: 12.5, color: T.ivoryMuted, lineHeight: 1.5 }}>
+                El huésped ya le pagó a <b style={{ color: T.ivory }}>{folio.canalOrigen}</b> (US$ {fmt(folio.montoAlojamientoOtaUsd)}). No se cobra aquí: queda en <b style={{ color: T.ivory }}>Cobros pendientes de OTA</b> y el comprobante se emite cuando llegue el depósito.
+              </div>
+              <BotonModalidadCobro reservaId={reservaSel.reserva_id} canal={folio.canalOrigen} actual="ota" onCambio={cargarFolio} />
+            </div>
+            ) : (
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje</div>
+              {["Booking.com", "Expedia"].includes(folio.canalOrigen) && (
+                <BotonModalidadCobro reservaId={reservaSel.reserva_id} canal={folio.canalOrigen} actual="hotel" onCambio={cargarFolio} />
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
                 <span>US$ {fmt(hospedajeUsd)}</span>
                 <span>≈ S/ {fmt(hospedajeSoles)}</span>
@@ -2854,6 +2920,7 @@ function CheckoutPantalla() {
               )}
               {!hayHospedajeQueCobrar && <div style={{ fontSize: 12, color: T.green }}>Cubierto por adelanto</div>}
             </div>
+            )}
 
             {/* CONSUMO */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
