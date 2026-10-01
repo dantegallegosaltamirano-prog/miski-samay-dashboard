@@ -45,6 +45,7 @@ const core = [
 { icon: "🍽️", label: "Cargar consumos", href: "consumos.html" },
 { icon: "←", label: "Check-out", href: "checkout.html" },
 { icon: "📋", label: "Procesar comprobantes", href: "control.html" },
+{ icon: "🌐", label: "Cobros de OTA", href: "cobros-ota.html", badgeKey: "cobrosOta", badgeTitle: "Reservas Booking/Expedia collect esperando el depósito de la OTA" },
 { icon: "◈", label: "Actividad en Vivo", href: "actividad.html" },
 { icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
 ];
@@ -271,6 +272,9 @@ const [pedidosHuesped, setPedidosHuesped] = useState(0);
 // formulario (cortes de luz) pero cuyo check-in sigue sin completarse en
 // la app, + respuestas que no se pudieron unir solas a una reserva.
 const [pendientesFormulario, setPendientesFormulario] = useState(0);
+// Cobros de OTA (1 oct): reservas Booking/Expedia collect cuyo depósito
+// todavía no llega. También aparte, para que un fallo no tumbe el panel.
+const [cobrosOtaPendientes, setCobrosOtaPendientes] = useState(0);
 const cargarPedidosHuesped = useCallback(() => {
 apiGet("/api/pedidos-huesped/pendientes")
 .then((d) => setPedidosHuesped(Array.isArray(d) ? d.length : 0))
@@ -281,6 +285,9 @@ if (!Array.isArray(g)) return;
 const reservasPendientes = new Set(g.filter((x) => x.estado === "asignado" && x.reserva_estado === "confirmada").map((x) => x.reserva_id));
 setPendientesFormulario(reservasPendientes.size + g.filter((x) => x.estado === "sin_reserva").length);
 })
+.catch(() => {});
+apiGet("/api/cobros-ota")
+.then((c) => setCobrosOtaPendientes(Array.isArray(c) ? c.filter((x) => x.estado === "pendiente").length : 0))
 .catch(() => {});
 }, []);
 
@@ -362,7 +369,7 @@ return (
 </div>
 <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
 {navItemsData.core.map((item) => (
-<ItemNav key={item.label} item={item} badge={item.badgeKey === "pedidosHuesped" ? pedidosHuesped : 0} badge2={item.badgeKey === "pedidosHuesped" ? pendientesFormulario : 0} />
+<ItemNav key={item.label} item={item} badge={item.badgeKey === "pedidosHuesped" ? pedidosHuesped : item.badgeKey === "cobrosOta" ? cobrosOtaPendientes : 0} badge2={item.badgeKey === "pedidosHuesped" ? pendientesFormulario : 0} />
 ))}
 {navItemsData.admin.length > 0 && (
 <React.Fragment>
@@ -665,7 +672,7 @@ cursor: item.href ? "pointer" : "default",
 <span title="Registrados por formulario con check-in pendiente en la app" style={{ background: "#B88873", color: "#1C1A20", borderRadius: 999, minWidth: 20, height: 20, fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 6px" }}>{badge2}</span>
 )}
 {badge > 0 && (
-<span title="Pedidos de huéspedes por confirmar" style={{ background: T.gold, color: "#1C1A20", borderRadius: 999, minWidth: 20, height: 20, fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 6px" }}>{badge}</span>
+<span title={item.badgeTitle || "Pedidos de huéspedes por confirmar"} style={{ background: T.gold, color: "#1C1A20", borderRadius: 999, minWidth: 20, height: 20, fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 6px" }}>{badge}</span>
 )}
 </span>}
 </div>
