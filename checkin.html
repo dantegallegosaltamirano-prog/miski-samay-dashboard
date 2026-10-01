@@ -137,6 +137,15 @@ const [referidoFalta, setReferidoFalta] = useState(false);
 const [noches, setNoches] = useState([]);
 const [domoSel, setDomoSel] = useState(null);
 const [completado, setCompletado] = useState(false);
+// Cobros de OTA (1 oct, pedido de Dante): en Booking.com y Expedia el
+// huésped a veces ya le pagó a la OTA ("collect") y la OTA nos deposita
+// semanas después. Recepción debe indicar quién cobró el hospedaje:
+// 'hotel' = Hotel collect (como siempre) / 'ota' = Booking/Expedia collect
+// (el hospedaje NO se cobra en el check-out; queda en Cobros pendientes de
+// OTA y el comprobante se emite cuando llega el depósito).
+const CANALES_CON_COLLECT = ["Booking.com", "Expedia"];
+const [modalidadCobro, setModalidadCobro] = useState("");
+const [modalidadFalta, setModalidadFalta] = useState(false);
 
 // Si cambian de canal y ya no es Directo, limpiamos la selección de
 // referido para que no quede un valor viejo escondido sin mostrarse.
@@ -283,6 +292,12 @@ if (!numeroDocumento) { alert("Ingresa el número de documento antes de continua
 if (!pais) { alert("Selecciona el país del huésped antes de continuar."); return; }
 if (!celular) { alert("Ingresa el celular del huésped antes de continuar."); return; }
 if (!correo) { alert("Ingresa el correo del huésped antes de continuar."); return; }
+if (CANALES_CON_COLLECT.includes(canal) && !modalidadCobro) {
+setModalidadFalta(true);
+alert(`Indica quién cobró el hospedaje: el hotel (Hotel collect) o ${canal} (${canal} collect).`);
+return;
+}
+setModalidadFalta(false);
 if (canal === "Directo" && !referido) {
 setReferidoFalta(true);
 alert("Selecciona quién refirió esta reserva directa antes de continuar (o \"Otro (especificar)\" si no está en la lista).");
@@ -315,6 +330,7 @@ montoImpuesto: totales.impuesto,
 montoServicio: totales.servicio,
 montoComision: totales.comision,
 montoNetoHotel: totales.netoHotel,
+modalidadCobro: CANALES_CON_COLLECT.includes(canal) ? modalidadCobro : "hotel",
 adelantoPagado: adelantoPagado || 0
 })
 })
@@ -362,6 +378,11 @@ return (
 </div>
 ) : (
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>{codigoQR}</div>
+)}
+{CANALES_CON_COLLECT.includes(canal) && modalidadCobro === "ota" && (
+<div style={{ marginTop: 16, background: "rgba(201,162,75,0.10)", border: "1px solid rgba(201,162,75,0.4)", borderRadius: 10, padding: 10, fontSize: 12, textAlign: "left" }}>
+🌐 Hospedaje cobrado por <b>{canal}</b>: no se cobra en el check-out. Quedó en <b>Cobros pendientes de OTA</b> para emitir el comprobante cuando llegue el depósito.
+</div>
 )}
 <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Total estadía (US$)</span><span>US$ {fmt(totales.totalUsd)}</span></div>
@@ -523,6 +544,33 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>Ver montos y tipo de cambio en Aloha · no llegan por iCal</div>
 </div>
+
+{CANALES_CON_COLLECT.includes(canal) && (
+<div style={{ background: T.card, border: `1px solid ${modalidadFalta ? T.red : T.cardBorder}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>¿Quién cobró el hospedaje?</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>Revísalo en la reserva de Aloha / {canal}.</div>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+{[
+{ valor: "hotel", titulo: "🏨 Hotel collect", sub: "El huésped le paga al hotel. Se cobra y factura en el check-out, como siempre." },
+{ valor: "ota", titulo: `🌐 ${canal} collect`, sub: `El huésped ya le pagó a ${canal}. El comprobante del hospedaje se emite cuando ${canal} nos deposite.` },
+].map((op) => {
+const sel = modalidadCobro === op.valor;
+return (
+<button key={op.valor} onClick={() => { setModalidadCobro(op.valor); setModalidadFalta(false); }} style={{
+textAlign: "left", background: sel ? "rgba(201,162,75,0.15)" : T.bg, border: `${sel ? 2 : 1}px solid ${sel ? T.gold : T.cardBorder}`,
+color: T.ivory, borderRadius: 10, padding: "10px 12px", cursor: "pointer",
+}}>
+<div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.gold : T.ivory }}>{op.titulo}</div>
+<div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 3, lineHeight: 1.4 }}>{op.sub}</div>
+</button>
+);
+})}
+</div>
+{modalidadCobro === "ota" && totales.totalUsd <= 0 && (
+<div style={{ fontSize: 11.5, color: T.amber, marginTop: 8 }}>Escribe la tarifa de la reserva arriba: es el monto que se espera que deposite {canal} y con el que se emitirá el comprobante (se puede corregir al emitir).</div>
+)}
+</div>
+)}
 
 <div style={{ marginBottom: 20 }}>
 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Asignar domo</div>
