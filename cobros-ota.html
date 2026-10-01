@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Miski Samay — Cobros pendientes de OTA</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+input, select, button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+// =====================================================================
+// COBROS PENDIENTES DE OTA (1 oct, pedido de Dante)
+// Reservas de Booking.com / Expedia donde el huésped le pagó a la OTA
+// ("collect"). El hospedaje no se cobra en el check-out: queda aquí hasta
+// que la OTA deposita en la cuenta corriente (una semana, un mes o más).
+// Al llegar el depósito se marcan las reservas que pagó y se emite el
+// comprobante del hospedaje A NOMBRE DEL HUÉSPED (datos del check-in), por
+// la tarifa completa (editable antes de emitir).
+// =====================================================================
+const { useState, useEffect, useCallback, useMemo } = React;
+
+const T = {
+bg: "#0E0D0F", card: "#1C1A20", cardBorder: "#2A2730",
+gold: "#C9A24B", ivory: "#EFEAE1", ivoryMuted: "#9B968E", green: "#6B8F71", red: "#A83E32", amber: "#B88873",
+};
+const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
+const SESION_KEY = "ms_staff_sesion";
+
+function cargarSesion() {
+try { const raw = localStorage.getItem(SESION_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+async function apiGet(path) {
+const res = await fetch(`${API_BASE_URL}${path}`);
+if (!res.ok) throw new Error(`${path} respondió ${res.status}`);
+return res.json();
+}
+async function apiPost(path, body) {
+const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+let data = null;
+try { data = await res.json(); } catch {}
+if (!res.ok) throw new Error((data && data.error) || `${path} respondió ${res.status}`);
+return data;
+}
+function fmt(n) { return (Number(n) || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fechaCorta(iso) {
+if (!iso) return "—";
+return new Date(String(iso).slice(0, 10) + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "2-digit" });
+}
+function hoyLima() { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); }
+function diasDesde(iso) {
+if (!iso) return null;
+const d = (new Date(hoyLima() + "T12:00:00") - new Date(String(iso).slice(0, 10) + "T12:00:00")) / 86400000;
+return Math.round(d);
+}
+// "hoy" / "hace 1 día" / "hace 12 días"
+function haceTexto(dias) {
+if (dias == null) return "—";
+if (dias < 0) return "— aún no (sigue alojado)";
+if (dias === 0) return "hoy";
+return dias === 1 ? "hace 1 día" : `hace ${dias} días`;
+}
+
+const inputSt = { background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8, color: T.ivory, padding: "8px 10px", fontSize: 13 };
+
+// ---------------------------------------------------------------------
+function PanelDeposito({ seleccion, sesion, puedeEmitir, alTerminar, onCancelar }) {
+const [fecha, setFecha] = useState(hoyLima());
+const [moneda, setMoneda] = useState("USD");
+const [tipoCambio, setTipoCambio] = useState("");
+const [tipoComprobante, setTipoComprobante] = useState(puedeEmitir ? "boleta" : "");
+const [ruc, setRuc] = useState("");
+const [razon, setRazon] = useState("");
+const [filas, setFilas] = useState(() => seleccion.map((c) => ({ c, monto: Number(c.monto_esperado || 0).toFixed(2), recibido: "" })));
+const [procesando, setProcesando] = useState(false);
+const [resultados, setResultados] = useState(null);
+
+// Si el comprobante va en soles, el monto sugerido = tarifa en US$ × tipo de cambio.
+useEffect(() => {
+setFilas((prev) => prev.map((f) => ({
+...f,
+monto: moneda === "PEN"
+? (Number(tipoCambio) > 0 ? (Number(f.c.monto_esperado || 0) * Number(tipoCambio)).toFixed(2) : "")
+: Number(f.c.monto_esperado || 0).toFixed(2),
+})));
+}, [moneda, tipoCambio]);
+
+const total = filas.reduce((s, f) => s + (Number(f.monto) || 0), 0);
+const simbolo = moneda === "USD" ? "US$" : "S/";
+
+async function registrar() {
+if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { alert("Indica la fecha del depósito."); return; }
+if (moneda === "PEN" && !(Number(tipoCambio) > 0)) { alert("Para emitir en soles indica el tipo de cambio."); return; }
+if (filas.some((f) => !(Number(f.monto) > 0))) { alert("Cada reserva necesita un monto de comprobante mayor a 0."); return; }
+if (tipoComprobante === "factura" && (ruc.trim().length !== 11 || !razon.trim())) { alert("Para factura indica RUC (11 dígitos) y razón social."); return; }
+const n = filas.length;
+const textoEmitir = tipoComprobante ? `y emitir ${n} ${tipoComprobante === "factura" ? "factura(s)" : "boleta(s)"} ante SUNAT` : "(sin emitir comprobante todavía)";
+if (!window.confirm(`¿Registrar el depósito del ${fechaCorta(fecha)} para ${n} reserva(s) por ${simbolo} ${fmt(total)} ${textoEmitir}?`)) return;
+setProcesando(true);
+const res = [];
+for (const f of filas) {
+try {
+const d = await apiPost(`/api/cobros-ota/${f.c.id}/registrar-deposito`, {
+fechaDeposito: fecha,
+montoRecibido: f.recibido === "" ? null : Number(f.recibido),
+monedaRecibida: moneda,
+tipoCambio: Number(tipoCambio) > 0 ? Number(tipoCambio) : null,
+montoComprobante: Number(f.monto),
+monedaComprobante: moneda,
+tipoComprobante: tipoComprobante || null,
+facturaRuc: tipoComprobante === "factura" ? ruc.trim() : null,
+facturaRazonSocial: tipoComprobante === "factura" ? razon.trim() : null,
+staffId: sesion.id || null,
+});
+const comp = d.comprobante;
+res.push({ c: f.c, ok: true, texto: comp ? (comp.ok ? `✓ ${comp.tipoComprobante} ${comp.numeroComprobante}` : `⚠ Depósito registrado, pero el comprobante dio error: ${comp.error}`) : "✓ Depósito registrado (sin comprobante)", aviso: comp && !comp.ok });
+} catch (e) {
+res.push({ c: f.c, ok: false, texto: "✕ " + e.message });
+}
+}
+setResultados(res);
+setProcesando(false);
+}
+
+if (resultados) {
+return (
+<div style={{ background: T.card, border: `1px solid ${T.gold}`, borderRadius: 14, padding: 16, marginBottom: 18 }}>
+<div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Resultado</div>
+{resultados.map((r) => (
+<div key={r.c.id} style={{ fontSize: 13, padding: "5px 0", borderTop: `1px solid ${T.cardBorder}`, color: !r.ok ? "#E8B4AC" : r.aviso ? T.amber : T.ivory }}>
+<b>{r.c.nombre_completo}</b> ({r.c.domo || "—"}): {r.texto}
+</div>
+))}
+<button onClick={alTerminar} style={{ marginTop: 12, background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Listo</button>
+</div>
+);
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid ${T.gold}`, borderRadius: 14, padding: 16, marginBottom: 18 }}>
+<div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💰 Registrar depósito de la OTA</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 12 }}>El comprobante del hospedaje sale a nombre de cada huésped, con los datos de su check-in.</div>
+
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "flex-end" }}>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Fecha del depósito<br /><input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} style={inputSt} /></label>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Moneda<br />
+<select value={moneda} onChange={(e) => setMoneda(e.target.value)} style={inputSt}><option value="USD">US$ dólares</option><option value="PEN">S/ soles</option></select>
+</label>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Tipo de cambio {moneda === "PEN" ? "(obligatorio)" : "(opcional)"}<br /><input type="number" step="0.001" min="0" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} placeholder="3.75" style={{ ...inputSt, width: 110 }} /></label>
+<label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comprobante<br />
+<select value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)} style={inputSt}>
+{puedeEmitir && <option value="boleta">Boleta</option>}
+{puedeEmitir && <option value="factura">Factura</option>}
+<option value="">No emitir todavía</option>
+</select>
+</label>
+</div>
+{!puedeEmitir && <div style={{ fontSize: 11.5, color: T.amber, marginBottom: 10 }}>Tu usuario no tiene permiso para emitir comprobantes: se registra el depósito y alguien con permiso lo emite después desde aquí.</div>}
+{tipoComprobante === "factura" && (
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+<input value={ruc} onChange={(e) => setRuc(e.target.value.replace(/\D/g, "").slice(0, 11))} placeholder="RUC (11 dígitos)" style={{ ...inputSt, width: 160 }} />
+<input value={razon} onChange={(e) => setRazon(e.target.value)} placeholder="Razón social" style={{ ...inputSt, flex: "1 1 240px" }} />
+</div>
+)}
+
+<table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+<thead>
+<tr style={{ color: T.ivoryMuted, fontSize: 11, textAlign: "left" }}>
+<th style={{ padding: "4px 6px 6px 0", fontWeight: 400 }}>Huésped</th>
+<th style={{ padding: "4px 6px 6px", fontWeight: 400 }}>Tarifa esperada</th>
+<th style={{ padding: "4px 6px 6px", fontWeight: 400 }}>Monto del comprobante ({simbolo})</th>
+<th style={{ padding: "4px 0 6px 6px", fontWeight: 400 }}>Monto que depositó (opcional)</th>
+</tr>
+</thead>
+<tbody>
+{filas.map((f, i) => (
+<tr key={f.c.id} style={{ borderTop: `1px solid ${T.cardBorder}` }}>
+<td style={{ padding: "6px 6px 6px 0" }}>{f.c.nombre_completo} <span style={{ color: T.ivoryMuted }}>· {f.c.domo || "—"} · {f.c.ota}</span></td>
+<td style={{ padding: 6, color: T.ivoryMuted }}>US$ {fmt(f.c.monto_esperado)}</td>
+<td style={{ padding: 6 }}><input type="number" step="0.01" min="0" value={f.monto} onChange={(e) => setFilas((p) => p.map((x, j) => (j === i ? { ...x, monto: e.target.value } : x)))} style={{ ...inputSt, width: 120 }} /></td>
+<td style={{ padding: "6px 0 6px 6px" }}><input type="number" step="0.01" min="0" value={f.recibido} onChange={(e) => setFilas((p) => p.map((x, j) => (j === i ? { ...x, recibido: e.target.value } : x)))} placeholder="neto recibido" style={{ ...inputSt, width: 120 }} /></td>
+</tr>
+))}
+<tr style={{ borderTop: `1px solid ${T.ivoryMuted}` }}>
+<td style={{ padding: "8px 6px 0 0", fontWeight: 600 }}>Total</td><td></td>
+<td style={{ padding: "8px 6px 0", fontWeight: 700, color: T.gold }}>{simbolo} {fmt(total)}</td><td></td>
+</tr>
+</tbody>
+</table>
+
+<div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+<button disabled={procesando} onClick={registrar} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+{procesando ? "Procesando…" : tipoComprobante ? `Registrar depósito y emitir ${filas.length} comprobante(s)` : "Registrar depósito"}
+</button>
+<button disabled={procesando} onClick={onCancelar} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+</div>
+</div>
+);
+}
+
+// ---------------------------------------------------------------------
+function BotonEmitirPendiente({ c, puedeEmitir, alTerminar }) {
+const [ocupado, setOcupado] = useState(false);
+if (!puedeEmitir || !c.pago_id) return null;
+async function emitir() {
+const tipo = c.tipo_comprobante || "boleta";
+if (!window.confirm(`¿Emitir ${tipo} a nombre de ${c.nombre_completo}?`)) return;
+setOcupado(true);
+try { await apiPost(`/api/pagos/${c.pago_id}/emitir-comprobante`, { tipoComprobante: tipo }); }
+catch (e) { alert("No se pudo emitir: " + e.message); }
+setOcupado(false);
+alTerminar();
+}
+return (
+<button disabled={ocupado} onClick={emitir} style={{ background: "transparent", color: T.gold, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+{ocupado ? "Emitiendo…" : c.comprobante_estado === "error" ? "🔁 Reintentar emisión" : "Emitir comprobante"}
+</button>
+);
+}
+
+// ---------------------------------------------------------------------
+function PantallaCobrosOta({ sesion }) {
+const puedeEmitir = !!(sesion.puede_emitir_comprobantes || sesion.es_administrador);
+const [lista, setLista] = useState(null);
+const [error, setError] = useState(null);
+const [tab, setTab] = useState("pendiente");
+const [filtroOta, setFiltroOta] = useState("todas");
+const [seleccion, setSeleccion] = useState({});
+const [panel, setPanel] = useState(false);
+
+const cargar = useCallback(async () => {
+try { const d = await apiGet("/api/cobros-ota"); setLista(Array.isArray(d) ? d : []); setError(null); }
+catch (e) { setError("No se pudo conectar con el servidor."); }
+}, []);
+useEffect(() => { cargar(); }, [cargar]);
+
+const pendientes = (lista || []).filter((c) => c.estado === "pendiente");
+const pagados = (lista || []).filter((c) => c.estado === "pagado");
+const otas = [...new Set((lista || []).map((c) => c.ota).filter(Boolean))];
+const resumen = useMemo(() => {
+const m = {};
+pendientes.forEach((c) => {
+const k = c.ota || "OTA";
+m[k] = m[k] || { n: 0, total: 0, masAntigua: null };
+m[k].n++; m[k].total += Number(c.monto_esperado || 0);
+if (!m[k].masAntigua || (c.fecha_salida && c.fecha_salida < m[k].masAntigua)) m[k].masAntigua = c.fecha_salida;
+});
+return m;
+}, [lista]);
+
+const visibles = (tab === "pendiente" ? pendientes : pagados).filter((c) => filtroOta === "todas" || c.ota === filtroOta);
+const seleccionados = pendientes.filter((c) => seleccion[c.id]);
+
+function alternar(id) { setSeleccion((s) => ({ ...s, [id]: !s[id] })); }
+function terminar() { setPanel(false); setSeleccion({}); cargar(); }
+
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", padding: "28px 20px 48px" }}>
+<div style={{ maxWidth: 1000, margin: "0 auto" }}>
+<a href="index.html" style={{ color: T.ivoryMuted, fontSize: 12.5, textDecoration: "none" }}>← Volver al panel</a>
+<h1 style={{ fontSize: 22, margin: "10px 0 4px" }}>🌐 Cobros pendientes de OTA</h1>
+<div style={{ fontSize: 12.5, color: T.ivoryMuted }}>Hospedajes de Booking.com / Expedia que el huésped le pagó a la OTA. Cuando llegue el depósito a la cuenta corriente, márcalos y emite el comprobante.</div>
+
+{error && <div style={{ background: "rgba(168,62,50,0.12)", border: "1px solid rgba(168,62,50,0.35)", color: "#E8B4AC", borderRadius: 12, padding: "12px 16px", fontSize: 12.5, marginTop: 16 }}>⚠ {error}</div>}
+{lista === null && !error && <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 40 }}>Cargando…</div>}
+
+{lista !== null && (
+<React.Fragment>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, margin: "18px 0" }}>
+{Object.keys(resumen).length === 0 && <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, fontSize: 13, color: T.ivoryMuted }}>No hay hospedajes pendientes de depósito. ✓</div>}
+{Object.entries(resumen).map(([ota, r]) => (
+<div key={ota} style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14 }}>
+<div style={{ fontSize: 12, color: T.ivoryMuted }}>{ota} te debe</div>
+<div style={{ fontSize: 22, fontWeight: 700, color: T.gold, margin: "2px 0" }}>US$ {fmt(r.total)}</div>
+<div style={{ fontSize: 11.5, color: T.ivoryMuted }}>{r.n} reserva(s) · la más antigua salió {haceTexto(diasDesde(r.masAntigua))}</div>
+</div>
+))}
+</div>
+
+{panel && seleccionados.length > 0 && (
+<PanelDeposito seleccion={seleccionados} sesion={sesion} puedeEmitir={puedeEmitir} alTerminar={terminar} onCancelar={() => setPanel(false)} />
+)}
+
+<div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+{[["pendiente", `Pendientes (${pendientes.length})`], ["pagado", `Depositados (${pagados.length})`]].map(([k, l]) => (
+<button key={k} onClick={() => setTab(k)} style={{ padding: "7px 14px", borderRadius: 999, cursor: "pointer", fontSize: 13, fontWeight: 600, border: `1px solid ${tab === k ? T.gold : T.cardBorder}`, background: tab === k ? "rgba(201,162,75,0.15)" : T.card, color: tab === k ? T.gold : T.ivory }}>{l}</button>
+))}
+<select value={filtroOta} onChange={(e) => setFiltroOta(e.target.value)} style={{ ...inputSt, marginLeft: "auto" }}>
+<option value="todas">Todas las OTA</option>
+{otas.map((o) => <option key={o} value={o}>{o}</option>)}
+</select>
+{tab === "pendiente" && (
+<button disabled={seleccionados.length === 0} onClick={() => setPanel(true)} style={{ background: seleccionados.length ? T.gold : T.cardBorder, color: seleccionados.length ? "#1C1A20" : T.ivoryMuted, border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: seleccionados.length ? "pointer" : "default" }}>
+💰 Llegó el depósito ({seleccionados.length})
+</button>
+)}
+</div>
+
+{visibles.length === 0 ? (
+<div style={{ background: T.card, border: `1px dashed ${T.cardBorder}`, color: T.ivoryMuted, borderRadius: 12, padding: 18, fontSize: 12.5, textAlign: "center" }}>Nada por aquí.</div>
+) : (
+<div style={{ display: "grid", gap: 8 }}>
+{visibles.map((c) => {
+const dias = diasDesde(c.fecha_salida);
+return (
+<div key={c.id} style={{ background: T.card, border: `1px solid ${seleccion[c.id] ? T.gold : T.cardBorder}`, borderRadius: 12, padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+{tab === "pendiente" && <input type="checkbox" checked={!!seleccion[c.id]} onChange={() => alternar(c.id)} style={{ width: 18, height: 18, cursor: "pointer" }} />}
+<div style={{ flex: "1 1 280px", minWidth: 0 }}>
+<div style={{ fontSize: 14, fontWeight: 600 }}>{c.domo && <span style={{ color: T.gold }}>{c.domo} · </span>}{c.nombre_completo || "—"}</div>
+<div style={{ fontSize: 12, color: T.ivoryMuted, marginTop: 2 }}>
+{c.ota}{c.booking_id_externo ? ` #${c.booking_id_externo}` : ""} · {fechaCorta(c.fecha_llegada)} → {fechaCorta(c.fecha_salida)} · {c.tipo_documento} {c.numero_documento}
+{c.estado_reserva === "check_in" && <span style={{ color: T.amber }}> · todavía alojado</span>}
+</div>
+</div>
+{tab === "pendiente" ? (
+<div style={{ textAlign: "right" }}>
+<div style={{ fontSize: 15, fontWeight: 700, color: T.gold }}>US$ {fmt(c.monto_esperado)}</div>
+{c.estado_reserva !== "check_in" && dias != null && dias >= 0 && <div style={{ fontSize: 11, color: dias > 45 ? "#E8B4AC" : T.ivoryMuted }}>salió {haceTexto(dias)}</div>}
+</div>
+) : (
+<div style={{ textAlign: "right", fontSize: 12 }}>
+<div>Depósito {fechaCorta(c.fecha_deposito)}{c.monto_recibido != null ? ` · recibido ${c.moneda_recibida === "PEN" ? "S/" : "US$"} ${fmt(c.monto_recibido)}` : ""}</div>
+{c.comprobante_estado === "emitido" ? (
+<div style={{ color: T.green, marginTop: 2 }}>✓ {c.tipo_comprobante} {c.numero_comprobante} · {c.moneda_comprobante === "PEN" ? "S/" : "US$"} {fmt(c.monto_comprobante)}</div>
+) : (
+<div style={{ marginTop: 4, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+<span style={{ color: c.comprobante_estado === "error" ? "#E8B4AC" : T.amber }}>{c.comprobante_estado === "error" ? "⚠ Error al emitir" : "Sin comprobante"}</span>
+<BotonEmitirPendiente c={c} puedeEmitir={puedeEmitir} alTerminar={cargar} />
+</div>
+)}
+</div>
+)}
+</div>
+);
+})}
+</div>
+)}
+</React.Fragment>
+)}
+</div>
+</div>
+);
+}
+
+function AppGate() {
+const sesion = cargarSesion();
+if (!sesion) {
+return (
+<div style={{ background: T.bg, color: T.ivory, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+<div style={{ fontSize: 14 }}>Primero debes iniciar sesión.</div>
+<a href="index.html" style={{ color: T.gold, fontSize: 13 }}>← Ir al panel principal</a>
+</div>
+);
+}
+return <PantallaCobrosOta sesion={sesion} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppGate />);
+</script>
+</body>
+</html>
