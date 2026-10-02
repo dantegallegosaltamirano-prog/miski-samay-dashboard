@@ -73,6 +73,51 @@ function Check({ ok }) {
   );
 }
 
+// Cobros de OTA (1 oct): quién cobró el hospedaje de cada reserva.
+// - "🌐 Booking.com collect" / "🌐 Expedia collect": lo cobró la OTA →
+//   ⏳ pendiente de depósito, o ✓ depositado (fecha y monto).
+// - "🏨 Hotel collect": lo cobra el hotel en el check-out (como siempre).
+// grupo = valor que usa el filtro "Cobro del hospedaje".
+const CANALES_CON_COLLECT = ["Booking.com", "Expedia"];
+function estadoCobro(r) {
+  const usd = (n) => "US$ " + Number(n || 0).toFixed(2);
+  if (r.modalidad_cobro === "ota" || r.cobro_ota_estado) {
+    const canal = r.cobro_ota || r.canal_origen || "OTA";
+    const titulo = `🌐 ${canal} collect`;
+    if (r.cobro_ota_estado === "pagado") {
+      const recibido = r.cobro_ota_recibido != null
+        ? ` · recibido ${r.cobro_ota_moneda_recibida === "PEN" ? "S/" : "US$"} ${Number(r.cobro_ota_recibido).toFixed(2)}`
+        : "";
+      return { grupo: "ota_depositado", titulo, detalle: `✓ Depositado ${fechaCorta(r.cobro_ota_fecha_deposito)} · ${usd(r.cobro_ota_monto)}${recibido}`, color: T.green };
+    }
+    const monto = r.cobro_ota_monto != null ? r.cobro_ota_monto : r.monto_total;
+    return { grupo: "ota_pendiente", titulo, detalle: `⏳ Pendiente de depósito · ${usd(monto)}`, color: T.amber };
+  }
+  const titulo = "🏨 Hotel collect";
+  if (r.checkout_hecho || Number(r.hospedaje_cobrado) > 0) {
+    return { grupo: "hotel", titulo, detalle: "✓ Cobrado por el hotel", color: T.green };
+  }
+  if (r.checkin_hecho && CANALES_CON_COLLECT.includes(r.canal_origen) && !r.modalidad_cobro) {
+    // Alojado desde antes de que existiera la pregunta del check-in.
+    return { grupo: "hotel", titulo, detalle: "⚠ Sin indicar — confírmalo en el check-out", color: T.amber };
+  }
+  if (r.checkin_hecho) return { grupo: "hotel", titulo, detalle: "Por cobrar en el check-out", color: T.ivoryMuted };
+  return { grupo: "sin_llegar", titulo: "—", detalle: "Todavía no llega", color: T.ivoryMuted };
+}
+function CeldaCobro({ r }) {
+  const e = estadoCobro(r);
+  return (
+    <div style={{ minWidth: 150 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: e.grupo.startsWith("ota") ? T.gold : T.ivory }}>{e.titulo}</div>
+      <div style={{ fontSize: 11, color: e.color, marginTop: 2 }}>{e.detalle}</div>
+    </div>
+  );
+}
+function textoCobro(r) {
+  const e = estadoCobro(r);
+  return e.titulo === "—" ? e.detalle : `${e.titulo.replace(/^[^A-Za-z]+/, "")} — ${e.detalle.replace(/^[^A-Za-z]+/, "")}`;
+}
+
 // Ajuste 27 set (reporte de Dante): el backend devuelve UNA entrada por
 // cada línea de pago. Cuando hospedaje y consumo (o propina) se pagan en
 // la MISMA moneda, se emite UN solo comprobante que cubre las dos líneas
@@ -134,18 +179,19 @@ function CeldaComprobantes({ comprobantes: todos }) {
 }
 
 function descargarCSV(anio, mes, reservas) {
-  const encabezado = ["Huésped", "Domo", "Canal", "Referido por", "Impuesto US$", "Servicio US$", "Comisión US$", "Neto hotel US$", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
+  const encabezado = ["Huésped", "Domo", "Canal", "Cobro del hospedaje", "Referido por", "Impuesto US$", "Servicio US$", "Comisión US$", "Neto hotel US$", "Llegada", "Salida", "Check-in", "Check-out", "Consumos cargados", "Comprobantes"];
   const filas = reservas.map((r) => [
     r.nombre_completo || "Por confirmar",
     r.domo_codigo || "Sin domo",
     r.canal_origen || "",
+    textoCobro(r),
     r.referido_por || "",
     r.monto_impuesto != null ? Number(r.monto_impuesto).toFixed(2) : "",
     r.monto_servicio != null ? Number(r.monto_servicio).toFixed(2) : "",
     r.monto_comision != null ? Number(r.monto_comision).toFixed(2) : "",
     r.monto_neto_hotel != null ? Number(r.monto_neto_hotel).toFixed(2) : "",
-    r.fecha_llegada,
-    r.fecha_salida,
+    String(r.fecha_llegada || "").slice(0, 10),
+    String(r.fecha_salida || "").slice(0, 10),
     r.checkin_hecho ? "Sí" : "No",
     r.checkout_hecho ? "Sí" : "No",
     r.cantidad_consumos > 0 ? `Sí (${r.cantidad_consumos})` : "No",
@@ -183,15 +229,16 @@ function celdaComprobantesHtml(todos) {
   }).join("<br/>");
 }
 
-function descargarHTML(anio, mes, reservas) {
+function descargarHTML(anio, mes, reservas, filtroTexto) {
   const filasHtml = reservas.map((r) => `
     <tr>
       <td>${escaparHtml(r.nombre_completo || "Por confirmar")}</td>
       <td>${escaparHtml(r.domo_codigo || "—")}</td>
       <td>${escaparHtml(r.canal_origen || "—")}</td>
+      <td>${escaparHtml(textoCobro(r))}</td>
       <td>${escaparHtml(r.referido_por || "—")}</td>
-      <td>${escaparHtml(r.fecha_llegada)}</td>
-      <td>${escaparHtml(r.fecha_salida)}</td>
+      <td>${escaparHtml(fechaCorta(r.fecha_llegada))}</td>
+      <td>${escaparHtml(fechaCorta(r.fecha_salida))}</td>
       <td style="text-align:center">${r.checkin_hecho ? "✅" : "—"}</td>
       <td style="text-align:center">${r.checkout_hecho ? "✅" : "—"}</td>
       <td style="text-align:center">${r.cantidad_consumos > 0 ? "✅" : "—"}</td>
@@ -211,10 +258,10 @@ function descargarHTML(anio, mes, reservas) {
 </style></head>
 <body>
 <h1>Reporte mensual — Miski Samay Domo Boutique — ${MESES[mes - 1]} ${anio}</h1>
-<p>Generado el ${new Date().toLocaleDateString("es-PE")} desde el panel operativo.</p>
+<p>Generado el ${new Date().toLocaleDateString("es-PE")} desde el panel operativo.${filtroTexto ? " Filtro: " + escaparHtml(filtroTexto) + "." : ""}</p>
 <table>
 <thead><tr>
-<th>Huésped</th><th>Domo</th><th>Canal</th><th>Referido por</th><th>Llegada</th><th>Salida</th>
+<th>Huésped</th><th>Domo</th><th>Canal</th><th>Cobro del hospedaje</th><th>Referido por</th><th>Llegada</th><th>Salida</th>
 <th>Check-in</th><th>Check-out</th><th>Consumos</th><th>Comprobante(s)</th>
 </tr></thead>
 <tbody>${filasHtml}</tbody>
@@ -711,13 +758,34 @@ function ReportesMensual() {
   }
   useEffect(cargar, [anio, mes]);
 
-  const totalCheckin = reservas ? reservas.filter((r) => r.checkin_hecho).length : 0;
-  const totalCheckout = reservas ? reservas.filter((r) => r.checkout_hecho).length : 0;
-  const totalFacturadas = reservas ? reservas.filter((r) => (r.comprobantes || []).some((c) => c.estado === "emitido")).length : 0;
+  // Sub-selección (1 oct, pedido de Dante): filtrar por canal y por quién
+  // cobró el hospedaje. Los totales, la tabla y las descargas muestran
+  // solo lo filtrado.
+  const [filtroCanal, setFiltroCanal] = useState("todos");
+  const [filtroCobro, setFiltroCobro] = useState("todos");
+  useEffect(() => { setFiltroCanal("todos"); }, [anio, mes]);
+  const todas = reservas || [];
+  const contarCanal = (c) => todas.filter((r) => (r.canal_origen || "Sin canal") === c).length;
+  const canales = [...new Set(todas.map((r) => r.canal_origen || "Sin canal"))].sort((a, b) => contarCanal(b) - contarCanal(a));
+  const porCanal = todas.filter((r) => filtroCanal === "todos" || (r.canal_origen || "Sin canal") === filtroCanal);
+  const visibles = porCanal.filter((r) => filtroCobro === "todos" || estadoCobro(r).grupo === filtroCobro);
+  const OPCIONES_COBRO = [
+    ["todos", "Todos"],
+    ["hotel", "🏨 Hotel collect"],
+    ["ota_pendiente", "⏳ OTA collect — pendiente de depósito"],
+    ["ota_depositado", "✓ OTA collect — depositado"],
+  ];
+  const filtroTexto = [filtroCanal !== "todos" ? `canal ${filtroCanal}` : "", filtroCobro !== "todos" ? (OPCIONES_COBRO.find((o) => o[0] === filtroCobro) || ["", ""])[1].replace(/^[^A-Za-z]+/, "") : ""].filter(Boolean).join(" · ");
+
+  const totalCheckin = visibles.filter((r) => r.checkin_hecho).length;
+  const totalCheckout = visibles.filter((r) => r.checkout_hecho).length;
+  const totalFacturadas = visibles.filter((r) => (r.comprobantes || []).some((c) => c.estado === "emitido")).length;
+  const pendientesOta = visibles.filter((r) => estadoCobro(r).grupo === "ota_pendiente");
+  const montoPendienteOta = pendientesOta.reduce((s, r) => s + Number(r.cobro_ota_monto != null ? r.cobro_ota_monto : r.monto_total || 0), 0);
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
-      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 20, fontWeight: 800 }}>▤ Reportes mensuales</div>
@@ -748,8 +816,8 @@ function ReportesMensual() {
             </select>
           </div>
           <button
-            onClick={() => reservas && reservas.length > 0 && descargarCSV(anio, mes, reservas)}
-            disabled={!reservas || reservas.length === 0}
+            onClick={() => visibles.length > 0 && descargarCSV(anio, mes, visibles)}
+            disabled={visibles.length === 0}
             style={{
               background: reservas && reservas.length > 0 ? T.gold : T.cardBorder,
               color: reservas && reservas.length > 0 ? "#1C1A20" : T.ivoryMuted,
@@ -760,8 +828,8 @@ function ReportesMensual() {
             ⬇ Descargar CSV
           </button>
           <button
-            onClick={() => reservas && reservas.length > 0 && descargarHTML(anio, mes, reservas)}
-            disabled={!reservas || reservas.length === 0}
+            onClick={() => visibles.length > 0 && descargarHTML(anio, mes, visibles, filtroTexto)}
+            disabled={visibles.length === 0}
             style={{
               background: "transparent", color: reservas && reservas.length > 0 ? T.ivory : T.ivoryMuted,
               border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13,
@@ -790,12 +858,38 @@ function ReportesMensual() {
           <div id="reporte-imprimible">
             <div className="solo-impresion">
               <div style={{ fontSize: 18, fontWeight: 800 }}>Miski Samay Domo Boutique — Reporte {MESES[mes - 1]} {anio}</div>
-              <div style={{ fontSize: 12, marginTop: 2 }}>Generado el {new Date().toLocaleDateString("es-PE")}</div>
+              <div style={{ fontSize: 12, marginTop: 2 }}>Generado el {new Date().toLocaleDateString("es-PE")}{filtroTexto ? ` · Filtro: ${filtroTexto}` : ""}</div>
+            </div>
+            <div className="no-imprimir" style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 6 }}>Canal</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {["todos", ...canales].map((c) => {
+                  const n = c === "todos" ? todas.length : contarCanal(c);
+                  const activo = filtroCanal === c;
+                  return (
+                    <button key={c} onClick={() => setFiltroCanal(c)} style={{ padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 600, border: `1px solid ${activo ? T.gold : T.cardBorder}`, background: activo ? "rgba(201,162,75,0.15)" : T.card, color: activo ? T.gold : T.ivory }}>
+                      {c === "todos" ? "Todos" : c} ({n})
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 6 }}>Cobro del hospedaje</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {OPCIONES_COBRO.map(([k, l]) => {
+                  const n = k === "todos" ? porCanal.length : porCanal.filter((r) => estadoCobro(r).grupo === k).length;
+                  const activo = filtroCobro === k;
+                  return (
+                    <button key={k} onClick={() => setFiltroCobro(k)} style={{ padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 600, border: `1px solid ${activo ? T.gold : T.cardBorder}`, background: activo ? "rgba(201,162,75,0.15)" : T.card, color: activo ? T.gold : T.ivory }}>
+                      {l} ({n})
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 800 }}>{reservas.length}</div>
-                <div style={{ fontSize: 11, color: T.ivoryMuted }}>reservas del mes</div>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{visibles.length}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>{filtroTexto ? "reservas (filtradas)" : "reservas del mes"}</div>
               </div>
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 120, textAlign: "center" }}>
                 <div style={{ fontSize: 22, fontWeight: 800 }}>{totalCheckin}</div>
@@ -809,10 +903,14 @@ function ReportesMensual() {
                 <div style={{ fontSize: 22, fontWeight: 800, color: T.green }}>{totalFacturadas}</div>
                 <div style={{ fontSize: 11, color: T.ivoryMuted }}>facturadas</div>
               </div>
+              <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, flex: 1, minWidth: 150, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: pendientesOta.length ? T.amber : T.ivory }}>US$ {montoFmt(montoPendienteOta)}</div>
+                <div style={{ fontSize: 11, color: T.ivoryMuted }}>pendiente de depósito OTA ({pendientesOta.length})</div>
+              </div>
             </div>
 
-            {reservas.length === 0 ? (
-              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>No hay reservas registradas para {MESES[mes - 1]} {anio}.</div>
+            {visibles.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>{todas.length === 0 ? `No hay reservas registradas para ${MESES[mes - 1]} ${anio}.` : "Ninguna reserva con este filtro."}</div>
             ) : (
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, overflowX: "auto" }}>
                 <table>
@@ -821,6 +919,7 @@ function ReportesMensual() {
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Huésped</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Domo</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Canal</th>
+                      <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Cobro del hospedaje</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Referido por</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comisión / Neto hotel</th>
                       <th style={{ fontSize: 11.5, color: T.ivoryMuted }}>Llegada</th>
@@ -832,11 +931,12 @@ function ReportesMensual() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reservas.map((r) => (
+                    {visibles.map((r) => (
                       <tr key={r.reserva_id} style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
                         <td style={{ fontSize: 12.5, fontWeight: 600 }}>{r.nombre_completo || "Por confirmar"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.domo_codigo || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.canal_origen || "—"}</td>
+                        <td><CeldaCobro r={r} /></td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{r.referido_por || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>
                           {r.monto_neto_hotel != null
