@@ -210,6 +210,58 @@ width: "100%", background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadi
 );
 }
 
+// Pedido especial (pedido de Dante, 13 oct): algo que el huésped pidió
+// y no está en el menú. Se escribe a mano la descripción y el precio,
+// y entra al carrito como cualquier otro producto (categoría "otros").
+function PanelEspecial({ onAgregar }) {
+const [desc, setDesc] = useState("");
+const [cant, setCant] = useState("1");
+const [precio, setPrecio] = useState("");
+const [error, setError] = useState(null);
+const estiloInput = {
+width: "100%", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 10,
+color: T.ivory, padding: "10px 12px", fontSize: 13.5, fontFamily: "inherit", boxSizing: "border-box",
+};
+const etiqueta = { fontSize: 12, color: T.ivoryMuted, marginBottom: 4, display: "block" };
+const precioNum = Number(String(precio).replace(",", "."));
+const cantNum = parseInt(cant, 10);
+const subtotal = cantNum > 0 && precioNum > 0 ? cantNum * precioNum : 0;
+
+function agregar() {
+if (!desc.trim()) { setError("Escribe qué pidió el huésped."); return; }
+if (!(cantNum > 0)) { setError("La cantidad debe ser 1 o más."); return; }
+if (!(precioNum > 0)) { setError("Escribe el precio unitario en soles."); return; }
+onAgregar({ descripcion: desc.trim(), cantidad: cantNum, precio: Math.round(precioNum * 100) / 100 });
+setDesc(""); setCant("1"); setPrecio(""); setError(null);
+}
+
+return (
+<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 20 }}>
+<label style={etiqueta}>¿Qué pidió? (no está en el menú)</label>
+<textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2}
+placeholder='Ej: "Pisco sour de maracuyá", "Torta de cumpleaños", "Traslado a Ollantaytambo"'
+style={{ ...estiloInput, resize: "vertical", marginBottom: 10 }} />
+<div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10, marginBottom: 10 }}>
+<div>
+<label style={etiqueta}>Cantidad</label>
+<input type="number" min="1" step="1" value={cant} onChange={(e) => setCant(e.target.value)} style={estiloInput} />
+</div>
+<div>
+<label style={etiqueta}>Precio unitario (S/)</label>
+<input type="number" min="0" step="0.01" inputMode="decimal" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0.00" style={estiloInput} />
+</div>
+</div>
+{error && <div style={{ color: "#D98A7D", fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
+<button onClick={agregar} style={{
+width: "100%", background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8,
+padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer",
+}}>
++ Agregar al pedido{subtotal > 0 ? ` · S/ ${subtotal.toFixed(2)}` : ""}
+</button>
+</div>
+);
+}
+
 function ConsumoRapido() {
 const [huespedes, setHuespedes] = useState([]);
 const [cargando, setCargando] = useState(true);
@@ -289,6 +341,14 @@ delete copia[DESAYUNO_NOTAS_ID];
 }
 return copia;
 });
+}
+
+function agregarEspecial({ descripcion, cantidad, precio }) {
+const id = `especial-${Date.now()}`;
+setCarrito(prev => ({
+...prev,
+[id]: { producto: { id, nombre: descripcion, precio, categoria: "otros" }, cantidad },
+}));
 }
 
 function eliminarItem(productoId) {
@@ -431,7 +491,22 @@ color: activa ? T.gold : T.ivory,
 );
 })
 )}
+<button onClick={() => setCategoriaActiva("especial")} style={{
+padding: "14px 0", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600,
+border: categoriaActiva === "especial" ? `2px solid ${T.gold}` : `1px dashed ${T.cardBorder}`,
+background: categoriaActiva === "especial" ? "rgba(201,162,75,0.15)" : T.card,
+color: categoriaActiva === "especial" ? T.gold : T.ivory,
+}}>
+✏️ Pedido especial
+</button>
 </div>
+
+{categoriaActiva === "especial" && (
+<div>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Pedido especial (fuera del menú)</div>
+<PanelEspecial onAgregar={agregarEspecial} />
+</div>
+)}
 
 {categoriaActiva === "desayuno" && (
 <div>
@@ -440,7 +515,7 @@ color: activa ? T.gold : T.ivory,
 </div>
 )}
 
-{categoriaActiva && categoriaActiva !== "desayuno" && (
+{categoriaActiva && categoriaActiva !== "desayuno" && categoriaActiva !== "especial" && (
 <div>
 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>3. Productos — {etiquetaCategoria(categoriaActiva)}</div>
 
