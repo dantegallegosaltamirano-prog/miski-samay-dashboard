@@ -45,6 +45,7 @@ const core = [
 { icon: "🍽️", label: "Cargar consumos", href: "consumos.html" },
 { icon: "←", label: "Check-out", href: "checkout.html" },
 { icon: "📋", label: "Procesar comprobantes", href: "control.html" },
+{ icon: "🚫", label: "Anular comprobante", href: "https://serviciosturisticosmiskisamay.hayllierp.com/documents", externo: true },
 { icon: "🌐", label: "Cobros de OTA", href: "cobros-ota.html", badgeKey: "cobrosOta", badgeTitle: "Reservas Booking/Expedia collect esperando el depósito de la OTA" },
 { icon: "◈", label: "Actividad en Vivo", href: "actividad.html" },
 { icon: "🧹", label: "Housekeeping", href: "limpieza.html" },
@@ -654,7 +655,11 @@ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 12, paddi
 function ItemNav({ item, badge, badge2 }) {
 const construido = item.active || !!item.href;
 return (
-<div onClick={() => { if (item.href) window.location.href = item.href; }} style={{
+<div onClick={() => {
+if (!item.href) return;
+if (item.externo) window.open(item.href, "_blank", "noopener");
+else window.location.href = item.href;
+}} style={{
 background: item.active ? "rgba(201,162,75,0.10)" : "transparent",
 color: item.active ? T.gold : (construido ? T.ivoryMuted : "#5C5850"),
 border: item.active ? "1px solid rgba(201,162,75,0.25)" : "1px solid transparent",
