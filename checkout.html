@@ -551,6 +551,77 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
     }
   }
 
+  // Re-emisión tras anular en HaylliERP (pedido de Dante, 13 oct): cuando un
+  // comprobante salió mal (ej. boleta en vez de factura), Dante lo anula en
+  // HaylliERP y acá "libera" ese pago — se limpian los datos del comprobante
+  // viejo (el pago/monto NO se toca) usando la misma herramienta de reseteo
+  // por serie, pero con el número EXACTO. Como los números se guardan sin
+  // ceros ("B002-136"), antes se verifica con buscar-por-comprobante que ese
+  // texto no coincida con ningún otro número (ej. "B002-1360"); si coincide,
+  // se bloquea. Luego se abre el panel de emisión para elegir boleta/factura.
+  const HAYLLI_DOCUMENTOS_URL = "https://serviciosturisticosmiskisamay.hayllierp.com/documents";
+  const [reemitirId, setReemitirId] = useState(null);
+  const [reemitirConfirmado, setReemitirConfirmado] = useState(false);
+  const [reemitirAutorizaId, setReemitirAutorizaId] = useState("");
+  const [reemitirMotivo, setReemitirMotivo] = useState("");
+  const [reemitirEnviando, setReemitirEnviando] = useState(false);
+  const [reemitirError, setReemitirError] = useState(null);
+  const [reemitirAviso, setReemitirAviso] = useState(null);
+
+  function abrirReemitir(p) {
+    setReemitirId(p.id);
+    setReemitirConfirmado(false);
+    setReemitirAutorizaId("");
+    setReemitirMotivo(p.tipo_comprobante === "boleta" ? "Se emitió boleta en vez de factura" : "");
+    setReemitirError(null);
+    setReemitirAviso(null);
+    setComprobanteEditId(null);
+  }
+
+  async function liberarParaReemitir(p) {
+    const numero = String(p.numero_comprobante || "").trim();
+    if (!numero) { setReemitirError("Este pago no tiene número de comprobante."); return; }
+    if (!reemitirConfirmado) { setReemitirError("Primero anula el comprobante en HaylliERP y marca la casilla."); return; }
+    if (!reemitirAutorizaId) { setReemitirError("Elige quién autoriza (gerencia)."); return; }
+    if (reemitirMotivo.trim().length < 5) { setReemitirError("Escribe el motivo (qué estuvo mal)."); return; }
+    setReemitirEnviando(true);
+    setReemitirError(null);
+    try {
+      // 1) Seguridad: el número no debe "contener" a otros comprobantes.
+      const rb = await fetch(`${API_BASE_URL}/api/pagos/buscar-por-comprobante?numero=${encodeURIComponent(numero)}`);
+      const db = await rb.json();
+      if (!rb.ok || db.error) throw new Error(db.error || "No se pudo verificar el número de comprobante");
+      const lista = Array.isArray(db.pagos) ? db.pagos : [];
+      const otros = lista.filter(x => String(x.numero_comprobante || "").trim().toUpperCase() !== numero.toUpperCase());
+      if (otros.length > 0) {
+        throw new Error(`Por seguridad no se liberó: "${numero}" también coincide con ${otros.map(o => o.numero_comprobante).join(", ")}. Avísale a Claude para hacerlo a mano.`);
+      }
+      const hermanos = lista.filter(x => x.pago_id !== p.id).length;
+      // 2) Liberar (limpia solo los datos del comprobante, no el pago).
+      const tipoViejo = p.tipo_comprobante === "factura" ? "Factura" : "Boleta";
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/resetear-comprobantes-serie`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seriePrefix: numero,
+          motivo: `Anulado en HaylliERP: ${tipoViejo} ${numero}. ${reemitirMotivo.trim()}`,
+          staffId: reemitirAutorizaId,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || "No se pudo liberar el comprobante");
+      setReemitirAviso(`✓ ${tipoViejo} ${numero} liberada (${data.pagosAfectados ?? 1} pago${(data.pagosAfectados ?? 1) === 1 ? "" : "s"}${hermanos ? ", incluye el otro pago que compartía ese comprobante" : ""}). Ahora elige si será boleta o factura y emite el nuevo.`);
+      setReemitirId(null);
+      if (reservaSel) await seleccionarReserva(reservaSel);
+      // 3) Abrir directo el panel de emisión, con el tipo contrario sugerido.
+      abrirEdicionComprobante({ ...p, numero_comprobante: "", tipo_comprobante: p.tipo_comprobante === "boleta" ? "factura" : "boleta" });
+    } catch (e) {
+      setReemitirError(e.message);
+    } finally {
+      setReemitirEnviando(false);
+    }
+  }
+
   // Edición rápida del comprobante electrónico (boleta/factura) de un pago
   // ya cerrado — no requiere gerencia ni motivo, es solo anotar el número
   // que se emitió a mano en la plataforma del proveedor (Keyfacil).
@@ -1091,6 +1162,12 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
                 <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 10, paddingTop: 10 }}>
                   {comprobanteEditId === p.id && puedeEmitir ? (
                     <div>
+                      {reemitirAviso && (
+                        <div style={{ background: "rgba(107,143,113,0.15)", border: `1px solid ${T.green}`, color: T.green, borderRadius: 8, padding: "8px 10px", fontSize: 11.5, marginBottom: 8 }}>
+                          {reemitirAviso}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>¿Será boleta o factura?</div>
                       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                         {[{ valor: "automatico", label: "Emitir automático" }, { valor: "manual", label: "Ingresar a mano" }].map((op) => (
                           <button key={op.valor} onClick={() => setComprobanteEditModo(op.valor)} style={{
@@ -1166,6 +1243,55 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
                           style={{ display: "inline-block", marginTop: 6, fontSize: 11.5, fontWeight: 600, color: T.gold, textDecoration: "none" }}>
                           🖨️ Imprimir
                         </a>
+                      )}
+                      {puedeEmitir && reemitirId !== p.id && (
+                        <button onClick={() => abrirReemitir(p)} style={{
+                          display: "block", marginTop: 8, background: "none", border: "none", color: "#D98A7D",
+                          fontSize: 11.5, cursor: "pointer", padding: 0, fontWeight: 600,
+                        }}>🚫 Comprobante con error → anular y volver a emitir</button>
+                      )}
+                      {puedeEmitir && reemitirId === p.id && (
+                        <div style={{ marginTop: 10, background: T.bg, border: "1px solid #A83E32", borderRadius: 10, padding: 12, color: T.ivory }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>
+                            Volver a emitir {p.tipo_comprobante === "factura" ? "Factura" : "Boleta"} {p.numero_comprobante}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 6 }}>
+                            <b style={{ color: T.ivory }}>Paso 1.</b> Anula este comprobante en HaylliERP (SUNAT).
+                          </div>
+                          <a href={HAYLLI_DOCUMENTOS_URL} target="_blank" rel="noopener noreferrer" style={{
+                            display: "inline-block", fontSize: 11.5, fontWeight: 600, color: T.gold, textDecoration: "none", marginBottom: 8,
+                          }}>↗ Abrir HaylliERP en otra pestaña</a>
+                          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 11.5, marginBottom: 10, cursor: "pointer" }}>
+                            <input type="checkbox" checked={reemitirConfirmado} onChange={(e) => setReemitirConfirmado(e.target.checked)} />
+                            <span>Ya anulé {p.numero_comprobante} en HaylliERP</span>
+                          </label>
+                          <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 6 }}>
+                            <b style={{ color: T.ivory }}>Paso 2.</b> ¿Qué estuvo mal y quién autoriza?
+                          </div>
+                          <textarea value={reemitirMotivo} onChange={(e) => setReemitirMotivo(e.target.value)} rows={2}
+                            placeholder="Ej: se emitió boleta en vez de factura / RUC equivocado / monto mal cargado"
+                            style={{ ...selectStyle, resize: "vertical", fontFamily: "inherit", marginBottom: 6 }} />
+                          <select value={reemitirAutorizaId} onChange={(e) => setReemitirAutorizaId(e.target.value)} style={{ ...selectStyle, marginBottom: 8 }}>
+                            <option value="">¿Quién autoriza? (gerencia)</option>
+                            {staffGerencia.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                          <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 8 }}>
+                            El pago y el monto no se tocan; solo se libera el comprobante para emitir uno nuevo. Si el monto también estaba mal, corrígelo antes de emitir tocando el monto de este pago (arriba).
+                          </div>
+                          {reemitirError && (
+                            <div style={{ color: "#D98A7D", fontSize: 11.5, marginBottom: 8 }}>{reemitirError}</div>
+                          )}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={() => setReemitirId(null)} style={{
+                              flex: 1, background: "none", border: `1px solid ${T.cardBorder}`, color: T.ivoryMuted,
+                              borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer",
+                            }}>Cancelar</button>
+                            <button onClick={() => liberarParaReemitir(p)} disabled={reemitirEnviando} style={{
+                              flex: 1, background: reemitirEnviando ? T.cardBorder : T.gold, color: reemitirEnviando ? T.ivoryMuted : "#1C1A20",
+                              border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: reemitirEnviando ? "not-allowed" : "pointer",
+                            }}>{reemitirEnviando ? "Liberando..." : "Paso 3: liberar y elegir boleta/factura →"}</button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ) : p.comprobante_estado === "error" ? (
