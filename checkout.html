@@ -326,7 +326,11 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
         {folio.modalidadCobro === "ota" ? (
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
             <span>Estadía completa — pagada a {folio.canalOrigen || "la OTA"}</span>
-            <span style={{ fontWeight: 700, color: T.green }}>Pagado</span>
+            {Number(folio.montoAlojamientoOtaUsd) > 0 ? (
+              <span style={{ fontWeight: 700, color: T.green }}>Pagado · US$ {fmt(folio.montoAlojamientoOtaUsd)}</span>
+            ) : (
+              <span style={{ fontWeight: 700, color: T.red }} title="La reserva no tiene monto de hospedaje cargado. Revísalo antes de cerrar.">⚠️ US$ 0.00 — revisar monto</span>
+            )}
           </div>
         ) : (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
