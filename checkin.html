@@ -184,6 +184,20 @@ setNombre(reserva.huespedNombre);
 // Aloha, que la traerá sola); para Directo, Dante la llena él mismo con
 // lo que le paga a quien refirió la reserva.
 const mostrarImpuestoServicio = canal === "Booking.com";
+// Booking.com collect (pedido de Dante, 20 oct): Booking nos deposita
+// base + servicio (SIN impuesto), menos su comisión del 18%. Ese total
+// (base + servicio) es el monto del comprobante. La columna Impuesto se
+// oculta y la comisión se calcula sola (18% de base + servicio).
+const COMISION_BOOKING = 0.18;
+const esBookingCollect = canal === "Booking.com" && modalidadCobro === "ota";
+const mostrarImpuesto = mostrarImpuestoServicio && !esBookingCollect;
+function recalcularBooking(n, collect) {
+const base = Number(n.base) || 0;
+const servicio = base > 0 ? (base * 0.10).toFixed(2) : n.servicio;
+if (!collect) return { ...n, impuesto: base > 0 ? (base * 0.10).toFixed(2) : n.impuesto, servicio };
+const sub = base + (Number(servicio) || 0);
+return { ...n, impuesto: "", servicio, comision: sub > 0 ? (sub * COMISION_BOOKING).toFixed(2) : n.comision };
+}
 
 // Si cambian a un canal que no desglosa impuesto/servicio, limpiamos esos
 // campos (aunque queden ocultos en la tabla, seguían sumando al total si
@@ -191,14 +205,11 @@ const mostrarImpuestoServicio = canal === "Booking.com";
 // cargada, la rellenamos con el 10%/10% de una vez.
 React.useEffect(() => {
 setNoches((prev) => prev.map((n) => {
-if (canal === "Booking.com") {
-const base = Number(n.base) || 0;
-return { ...n, impuesto: base > 0 ? (base * 0.10).toFixed(2) : n.impuesto, servicio: base > 0 ? (base * 0.10).toFixed(2) : n.servicio };
-}
+if (canal === "Booking.com") return recalcularBooking(n, esBookingCollect);
 return { ...n, impuesto: "", servicio: "" };
 }));
 // eslint-disable-next-line
-}, [canal]);
+}, [canal, modalidadCobro]);
 
 const [pais, setPais] = useState("");
 const [celular, setCelular] = useState("");
@@ -249,8 +260,13 @@ copia[i] = { ...copia[i], [campo]: valor };
 // difiere un poco del 10% parejo.
 if (campo === "base" && mostrarImpuestoServicio) {
 const base = Number(valor) || 0;
-copia[i].impuesto = base > 0 ? (base * 0.10).toFixed(2) : "";
-copia[i].servicio = base > 0 ? (base * 0.10).toFixed(2) : "";
+if (base <= 0) { copia[i].impuesto = ""; copia[i].servicio = ""; }
+else copia[i] = recalcularBooking(copia[i], esBookingCollect);
+}
+// Booking collect: si corrigen el servicio a mano, la comisión se ajusta.
+if (campo === "servicio" && esBookingCollect) {
+const sub = (Number(copia[i].base) || 0) + (Number(valor) || 0);
+copia[i].comision = sub > 0 ? (sub * COMISION_BOOKING).toFixed(2) : "";
 }
 setNoches(copia);
 }
@@ -494,10 +510,10 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 <tr style={{ color: T.ivoryMuted, fontSize: 11 }}>
 <td style={{ padding: "0 6px 6px 0" }}>Noche</td>
 <td style={{ padding: "0 6px 6px" }}>Base US$</td>
-{mostrarImpuestoServicio && <td style={{ padding: "0 6px 6px" }}>Impuesto</td>}
+{mostrarImpuesto && <td style={{ padding: "0 6px 6px" }}>Impuesto</td>}
 {mostrarImpuestoServicio && <td style={{ padding: "0 6px 6px" }}>Servicio</td>}
 <td style={{ padding: "0 6px 6px", textAlign: "right" }}>Total US$</td>
-<td style={{ padding: "0 6px 6px" }}>Comisión</td>
+<td style={{ padding: "0 6px 6px" }}>{esBookingCollect ? "Comisión 18%" : "Comisión"}</td>
 <td style={{ padding: "0 0 6px 6px", textAlign: "right" }}>Neto hotel</td>
 </tr>
 </thead>
@@ -509,7 +525,7 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 <span style={{ fontSize: 10.5, color: esFinDeSemana(n.fecha) ? T.gold : T.ivoryMuted }}>{esFinDeSemana(n.fecha) ? "fin de semana" : "regular"}</span>
 </td>
 <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.base} onChange={(e) => actualizarNoche(i, "base", e.target.value)} /></td>
-{mostrarImpuestoServicio && <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.impuesto} onChange={(e) => actualizarNoche(i, "impuesto", e.target.value)} /></td>}
+{mostrarImpuesto && <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.impuesto} onChange={(e) => actualizarNoche(i, "impuesto", e.target.value)} /></td>}
 {mostrarImpuestoServicio && <td style={{ padding: 6 }}><input style={inputStyle} placeholder="0.00" value={n.servicio} onChange={(e) => actualizarNoche(i, "servicio", e.target.value)} /></td>}
 <td style={{ padding: "6px", textAlign: "right", fontWeight: 600 }}>US$ {fmt(totalNoche(n))}</td>
 <td style={{ padding: 6 }}><input style={inputStyle} placeholder="—" value={n.comision} onChange={(e) => actualizarNoche(i, "comision", e.target.value)} /></td>
@@ -519,7 +535,7 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 <tr style={{ borderTop: `1px solid ${T.ivoryMuted}` }}>
 <td style={{ padding: "8px 6px 0 0", fontWeight: 600 }}>Total estadía</td>
 <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.base)}</td>
-{mostrarImpuestoServicio && <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.impuesto)}</td>}
+{mostrarImpuesto && <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.impuesto)}</td>}
 {mostrarImpuestoServicio && <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.servicio)}</td>}
 <td style={{ padding: "8px 6px 0", textAlign: "right", fontWeight: 600, fontSize: 15 }}>US$ {fmt(totales.totalUsd)}</td>
 <td style={{ padding: "8px 6px 0", color: T.ivoryMuted }}>US$ {fmt(totales.comision)}</td>
@@ -527,6 +543,11 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 </tr>
 </tbody>
 </table>
+{esBookingCollect && (
+<div style={{ fontSize: 11, color: T.gold, marginTop: 8 }}>
+Booking.com collect: total = base + servicio (sin impuesto) = monto del comprobante. Comisión de Booking 18% calculada sola; neto = lo que Booking deposita.
+</div>
+)}
 <div style={{ fontSize: 10.5, color: T.ivoryMuted, marginTop: 6 }}>
 {canal === "Directo"
 ? "Comisión: escribe lo que le corresponde a quien refirió esta reserva."
