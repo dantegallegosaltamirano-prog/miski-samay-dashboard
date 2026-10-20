@@ -76,7 +76,8 @@ function PanelDeposito({ seleccion, sesion, puedeEmitir, alTerminar, onCancelar 
 const [fecha, setFecha] = useState(hoyLima());
 const [moneda, setMoneda] = useState("USD");
 const [tipoCambio, setTipoCambio] = useState("");
-const [tipoComprobante, setTipoComprobante] = useState(puedeEmitir ? "boleta" : "");
+// Sin valor por defecto (pedido de Dante, 20 oct): obliga a elegir boleta o factura.
+const [tipoComprobante, setTipoComprobante] = useState(puedeEmitir ? "elegir" : "");
 const [ruc, setRuc] = useState("");
 const [razon, setRazon] = useState("");
 const [filas, setFilas] = useState(() => seleccion.map((c) => ({ c, monto: Number(c.monto_esperado || 0).toFixed(2), recibido: "" })));
@@ -99,6 +100,7 @@ const simbolo = moneda === "USD" ? "US$" : "S/";
 async function registrar() {
 if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { alert("Indica la fecha del depósito."); return; }
 if (moneda === "PEN" && !(Number(tipoCambio) > 0)) { alert("Para emitir en soles indica el tipo de cambio."); return; }
+if (tipoComprobante === "elegir") { alert("Elige si el comprobante será Boleta o Factura (o \"No emitir todavía\")."); return; }
 if (filas.some((f) => !(Number(f.monto) > 0))) { alert("Cada reserva necesita un monto de comprobante mayor a 0."); return; }
 if (tipoComprobante === "factura" && (ruc.trim().length !== 11 || !razon.trim())) { alert("Para factura indica RUC (11 dígitos) y razón social."); return; }
 const n = filas.length;
@@ -156,7 +158,8 @@ return (
 </label>
 <label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Tipo de cambio {moneda === "PEN" ? "(obligatorio)" : "(opcional)"}<br /><input type="number" step="0.001" min="0" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} placeholder="3.75" style={{ ...inputSt, width: 110 }} /></label>
 <label style={{ fontSize: 11.5, color: T.ivoryMuted }}>Comprobante<br />
-<select value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)} style={inputSt}>
+<select value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)} style={{ ...inputSt, border: `1px solid ${tipoComprobante === "elegir" ? T.amber : T.cardBorder}` }}>
+{puedeEmitir && <option value="elegir" disabled>— ¿Boleta o factura? —</option>}
 {puedeEmitir && <option value="boleta">Boleta</option>}
 {puedeEmitir && <option value="factura">Factura</option>}
 <option value="">No emitir todavía</option>
@@ -198,7 +201,7 @@ return (
 
 <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
 <button disabled={procesando} onClick={registrar} style={{ background: T.gold, color: "#1C1A20", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-{procesando ? "Procesando…" : tipoComprobante ? `Registrar depósito y emitir ${filas.length} comprobante(s)` : "Registrar depósito"}
+{procesando ? "Procesando…" : tipoComprobante === "elegir" ? "Elige boleta o factura" : tipoComprobante ? `Registrar depósito y emitir ${filas.length} comprobante(s)` : "Registrar depósito"}
 </button>
 <button disabled={procesando} onClick={onCancelar} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
 </div>
@@ -208,21 +211,54 @@ return (
 
 // ---------------------------------------------------------------------
 function BotonEmitirPendiente({ c, puedeEmitir, alTerminar }) {
+// Antes emitía boleta directo; ahora pregunta boleta o factura (20 oct).
+const [abierto, setAbierto] = useState(false);
+const [tipo, setTipo] = useState("");
+const [ruc, setRuc] = useState("");
+const [razon, setRazon] = useState("");
 const [ocupado, setOcupado] = useState(false);
 if (!puedeEmitir || !c.pago_id) return null;
 async function emitir() {
-const tipo = c.tipo_comprobante || "boleta";
-if (!window.confirm(`¿Emitir ${tipo} a nombre de ${c.nombre_completo}?`)) return;
+if (!tipo) { alert("Elige Boleta o Factura."); return; }
+if (tipo === "factura" && (ruc.trim().length !== 11 || !razon.trim())) { alert("Para factura indica RUC (11 dígitos) y razón social."); return; }
+if (!window.confirm(`¿Emitir ${tipo === "factura" ? `FACTURA a ${razon.trim()} (RUC ${ruc.trim()})` : `BOLETA a nombre de ${c.nombre_completo}`}?`)) return;
 setOcupado(true);
-try { await apiPost(`/api/pagos/${c.pago_id}/emitir-comprobante`, { tipoComprobante: tipo }); }
-catch (e) { alert("No se pudo emitir: " + e.message); }
+try {
+await apiPost(`/api/pagos/${c.pago_id}/emitir-comprobante`, {
+tipoComprobante: tipo,
+facturaRuc: tipo === "factura" ? ruc.trim() : undefined,
+facturaRazonSocial: tipo === "factura" ? razon.trim() : undefined,
+});
+setAbierto(false);
+} catch (e) { alert("No se pudo emitir: " + e.message); }
 setOcupado(false);
 alTerminar();
 }
+if (!abierto) {
 return (
-<button disabled={ocupado} onClick={emitir} style={{ background: "transparent", color: T.gold, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
-{ocupado ? "Emitiendo…" : c.comprobante_estado === "error" ? "🔁 Reintentar emisión" : "Emitir comprobante"}
+<button onClick={() => { setAbierto(true); setTipo(""); }} style={{ background: "transparent", color: T.gold, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+{c.comprobante_estado === "error" ? "🔁 Reintentar emisión" : "Emitir comprobante"}
 </button>
+);
+}
+const btn = (v, l) => (
+<button key={v} onClick={() => setTipo(v)} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: tipo === v ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`, background: tipo === v ? "rgba(201,162,75,0.15)" : T.bg, color: tipo === v ? T.gold : T.ivory }}>{l}</button>
+);
+return (
+<div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", width: "100%" }}>
+<div style={{ fontSize: 12, color: T.ivory }}>¿Boleta o factura?</div>
+<div style={{ display: "flex", gap: 6 }}>{btn("boleta", "Boleta")}{btn("factura", "Factura")}</div>
+{tipo === "factura" && (
+<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+<input value={ruc} onChange={(e) => setRuc(e.target.value.replace(/\D/g, "").slice(0, 11))} placeholder="RUC (11 dígitos)" style={{ ...inputSt, width: 140 }} />
+<input value={razon} onChange={(e) => setRazon(e.target.value)} placeholder="Razón social" style={{ ...inputSt, width: 200 }} />
+</div>
+)}
+<div style={{ display: "flex", gap: 6 }}>
+<button disabled={ocupado} onClick={() => setAbierto(false)} style={{ background: "transparent", color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+<button disabled={ocupado || !tipo} onClick={emitir} style={{ background: tipo ? T.gold : T.cardBorder, color: tipo ? "#1C1A20" : T.ivoryMuted, border: "none", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: tipo ? "pointer" : "default" }}>{ocupado ? "Emitiendo…" : "Emitir"}</button>
+</div>
+</div>
 );
 }
 
@@ -329,7 +365,12 @@ return (
 <div style={{ textAlign: "right", fontSize: 12 }}>
 <div>Depósito {fechaCorta(c.fecha_deposito)}{c.monto_recibido != null ? ` · recibido ${c.moneda_recibida === "PEN" ? "S/" : "US$"} ${fmt(c.monto_recibido)}` : ""}</div>
 {c.comprobante_estado === "emitido" ? (
-<div style={{ color: T.green, marginTop: 2 }}>✓ {c.tipo_comprobante} {c.numero_comprobante} · {c.moneda_comprobante === "PEN" ? "S/" : "US$"} {fmt(c.monto_comprobante)}</div>
+<div style={{ color: T.green, marginTop: 2 }}>✓ {c.tipo_comprobante} {c.numero_comprobante} · {c.moneda_comprobante === "PEN" ? "S/" : "US$"} {fmt(c.monto_comprobante)}
+{puedeEmitir && (
+<div><a href={`checkout.html?corregirId=${c.reserva_id}&corregirNombre=${encodeURIComponent(c.nombre_completo || "")}&corregirCodigo=${encodeURIComponent(c.domo || "")}`}
+style={{ color: "#E8B4AC", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>🚫 Comprobante con error → anular y volver a emitir</a></div>
+)}
+</div>
 ) : (
 <div style={{ marginTop: 4, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
 <span style={{ color: c.comprobante_estado === "error" ? "#E8B4AC" : T.amber }}>{c.comprobante_estado === "error" ? "⚠ Error al emitir" : "Sin comprobante"}</span>
