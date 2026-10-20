@@ -88,6 +88,7 @@ const METODOS_MIXTO = [
   { valor: "pos", label: "Tarjeta / POS" },
   { valor: "transferencia", label: "Transferencia" },
   { valor: "yape", label: "Yape" },
+  { valor: "adelanto", label: "Adelanto (pagado antes)" },
 ];
 
 const idBloqueado = new URLSearchParams(window.location.search).get("id");
@@ -587,34 +588,21 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
     setReemitirEnviando(true);
     setReemitirError(null);
     try {
-      // 1) Seguridad: el número no debe "contener" a otros comprobantes.
-      const rb = await fetch(`${API_BASE_URL}/api/pagos/buscar-por-comprobante?numero=${encodeURIComponent(numero)}`);
-      const db = await rb.json();
-      if (!rb.ok || db.error) throw new Error(db.error || "No se pudo verificar el número de comprobante");
-      const lista = Array.isArray(db.pagos) ? db.pagos : [];
-      const otros = lista.filter(x => String(x.numero_comprobante || "").trim().toUpperCase() !== numero.toUpperCase());
-      if (otros.length > 0) {
-        throw new Error(`Por seguridad no se liberó: "${numero}" también coincide con ${otros.map(o => o.numero_comprobante).join(", ")}. Avísale a Claude para hacerlo a mano.`);
-      }
-      const hermanos = lista.filter(x => x.pago_id !== p.id).length;
-      // 2) Liberar (limpia solo los datos del comprobante, no el pago).
-      const tipoViejo = p.tipo_comprobante === "factura" ? "Factura" : "Boleta";
-      const resp = await fetch(`${API_BASE_URL}/api/pagos/resetear-comprobantes-serie`, {
+      const tipoViejo = p.tipoComprobante === "factura" || p.tipo_comprobante === "factura" ? "Factura" : "Boleta";
+      const resp = await fetch(`${API_BASE_URL}/api/pagos/${p.id}/liberar-comprobante`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          seriePrefix: numero,
-          motivo: `Anulado en HaylliERP: ${tipoViejo} ${numero}. ${reemitirMotivo.trim()}`,
           staffId: reemitirAutorizaId,
+          motivo: `Anulado en HaylliERP: ${tipoViejo} ${numero}. ${reemitirMotivo.trim()}`,
         }),
       });
       const data = await resp.json();
       if (!resp.ok || data.error) throw new Error(data.error || "No se pudo liberar el comprobante");
-      // El reseteo del servidor solo reconoce series completas ("B002"), no un
-      // número exacto: si no afectó ningún pago, avisar en vez de seguir.
       if (!(Number(data.pagosAfectados) > 0)) {
-        throw new Error(`No se pudo liberar ${numero} desde la app (0 pagos afectados). Pídele a Claude el comando para liberarlo en Railway; no emitas todavía.`);
+        throw new Error(`No se liberó ${numero} (0 pagos afectados). No emitas todavía y avísale a Claude.`);
       }
+      const hermanos = Number(data.pagosAfectados) - 1;
       setReemitirAviso(`✓ ${tipoViejo} ${numero} liberada (${data.pagosAfectados ?? 1} pago${(data.pagosAfectados ?? 1) === 1 ? "" : "s"}${hermanos ? ", incluye el otro pago que compartía ese comprobante" : ""}). Ahora elige si será boleta o factura y emite el nuevo.`);
       setReemitirId(null);
       if (reservaSel) await seleccionarReserva(reservaSel);
@@ -2665,6 +2653,36 @@ function CheckoutPantalla() {
   const hayHospedajeQueCobrar = saldoHospedajeUsd > 0.009;
   const hayConsumoQueCobrar = saldoConsumoSoles > 0.009;
 
+  // Comprobante por el TOTAL (20 oct, pedido de Dante): el adelanto se resta
+  // para cobrar hoy, pero el comprobante debe salir por el total. Se envía
+  // como una parte "adelanto" del pago mixto de esa línea. Si el adelanto
+  // cubre todo, la línea va solo con esa parte (en US$ para el hospedaje).
+  const adelantoHospUsd = aplicarAdelantoA === "hospedaje" ? Math.min(adelantoUsd, hospedajeUsd) : 0;
+  const monedaLineaHospedaje = hayHospedajeQueCobrar ? monedaHospedaje : "USD";
+  const adelantoHospEnMoneda = monedaLineaHospedaje === "PEN"
+    ? adelantoHospUsd * (Number(tipoCambioHospedaje) || 0)
+    : adelantoHospUsd;
+  const adelantoConsSoles = aplicarAdelantoA === "consumo" ? Math.min(adelantoSoles, consumoSoles) : 0;
+  const monedaLineaConsumo = hayConsumoQueCobrar ? monedaConsumo : "PEN";
+  const adelantoConsEnMoneda = monedaLineaConsumo === "USD"
+    ? (Number(tipoCambioConsumo) > 0 ? adelantoConsSoles / Number(tipoCambioConsumo) : 0)
+    : adelantoConsSoles;
+  const hayLineaHospedaje = hayHospedajeQueCobrar || adelantoHospEnMoneda > 0.009;
+  const hayLineaConsumo = hayConsumoQueCobrar || adelantoConsEnMoneda > 0.009;
+
+  function sumarAdelanto(linea, adelanto) {
+    if (!(adelanto > 0.009)) return linea;
+    const partesHoy = linea.metodoPago === "mixto"
+      ? (linea.detalleMixto || [])
+      : (linea.monto > 0.009 ? [{ metodo: linea.metodoPago, monto: round2(linea.monto) }] : []);
+    return {
+      ...linea,
+      monto: round2(linea.monto + adelanto),
+      metodoPago: "mixto",
+      detalleMixto: [{ metodo: "adelanto", monto: round2(adelanto) }, ...partesHoy],
+    };
+  }
+
   // Un comprobante por cada moneda distinta que se está cobrando (no por
   // concepto) — si hospedaje y consumo terminan en la misma moneda, comparten
   // un solo número de comprobante.
@@ -2678,11 +2696,11 @@ function CheckoutPantalla() {
 
   const gruposComprobantePorMoneda = {};
   if (puedeEmitir) {
-    if (hayHospedajeQueCobrar) {
-      (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
+    if (hayLineaHospedaje) {
+      (gruposComprobantePorMoneda[monedaLineaHospedaje] = gruposComprobantePorMoneda[monedaLineaHospedaje] || []).push("Hospedaje");
     }
-    if (hayConsumoQueCobrar) {
-      (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+    if (hayLineaConsumo) {
+      (gruposComprobantePorMoneda[monedaLineaConsumo] = gruposComprobantePorMoneda[monedaLineaConsumo] || []).push("Consumo");
     }
     if (hayPropinaQueCobrar) {
       (gruposComprobantePorMoneda[monedaPropina] = gruposComprobantePorMoneda[monedaPropina] || []).push("Propina");
@@ -2703,13 +2721,14 @@ function CheckoutPantalla() {
 
   function construirPagos() {
     const pagos = [];
-    if (hayHospedajeQueCobrar) {
-      const linea = { concepto: "hospedaje", monto: round2(montoCobroHospedaje), moneda: monedaHospedaje, metodoPago: metodoHospedaje };
-      if (usaTipoCambioHospedaje) linea.tipoCambio = Number(tipoCambioHospedaje);
-      if (metodoHospedaje === "mixto") {
+    if (hayLineaHospedaje) {
+      let linea = { concepto: "hospedaje", monto: hayHospedajeQueCobrar ? round2(montoCobroHospedaje) : 0, moneda: monedaLineaHospedaje, metodoPago: metodoHospedaje };
+      if (monedaLineaHospedaje === "PEN") linea.tipoCambio = Number(tipoCambioHospedaje);
+      if (hayHospedajeQueCobrar && metodoHospedaje === "mixto") {
         linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
       }
-      if (gruposComprobantePorMoneda[monedaHospedaje]) {
+      linea = sumarAdelanto(linea, adelantoHospEnMoneda);
+      if (gruposComprobantePorMoneda[monedaLineaHospedaje]) {
         linea.tipoComprobante = tipoComprobante;
         if (tipoComprobante === "factura") {
           linea.facturaRuc = facturaRuc.trim();
@@ -2718,13 +2737,14 @@ function CheckoutPantalla() {
       }
       pagos.push(linea);
     }
-    if (hayConsumoQueCobrar) {
-      const linea = { concepto: "consumo", monto: round2(montoCobroConsumo), moneda: monedaConsumo, metodoPago: metodoConsumo };
-      if (usaTipoCambioConsumo) linea.tipoCambio = Number(tipoCambioConsumo);
-      if (metodoConsumo === "mixto") {
+    if (hayLineaConsumo) {
+      let linea = { concepto: "consumo", monto: hayConsumoQueCobrar ? round2(montoCobroConsumo) : 0, moneda: monedaLineaConsumo, metodoPago: metodoConsumo };
+      if (monedaLineaConsumo === "USD") linea.tipoCambio = Number(tipoCambioConsumo);
+      if (hayConsumoQueCobrar && metodoConsumo === "mixto") {
         linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
       }
-      if (gruposComprobantePorMoneda[monedaConsumo]) {
+      linea = sumarAdelanto(linea, adelantoConsEnMoneda);
+      if (gruposComprobantePorMoneda[monedaLineaConsumo]) {
         linea.tipoComprobante = tipoComprobante;
         if (tipoComprobante === "factura") {
           linea.facturaRuc = facturaRuc.trim();
