@@ -221,7 +221,8 @@ if (!puedeEmitir || !c.pago_id) return null;
 async function emitir() {
 if (!tipo) { alert("Elige Boleta o Factura."); return; }
 if (tipo === "factura" && (ruc.trim().length !== 11 || !razon.trim())) { alert("Para factura indica RUC (11 dígitos) y razón social."); return; }
-if (!window.confirm(`¿Emitir ${tipo === "factura" ? `FACTURA a ${razon.trim()} (RUC ${ruc.trim()})` : `BOLETA a nombre de ${c.nombre_completo}`}?`)) return;
+const montoTxt = `${c.moneda_comprobante === "PEN" ? "S/" : "US$"} ${fmt(c.monto_comprobante ?? c.monto_esperado)}`;
+if (!window.confirm(`¿Emitir ${tipo === "factura" ? `FACTURA a ${razon.trim()} (RUC ${ruc.trim()})` : `BOLETA a nombre de ${c.nombre_completo}`} por ${montoTxt} (hospedaje)?`)) return;
 setOcupado(true);
 try {
 await apiPost(`/api/pagos/${c.pago_id}/emitir-comprobante`, {
@@ -373,7 +374,9 @@ style={{ color: "#E8B4AC", fontSize: 11.5, fontWeight: 600, textDecoration: "non
 </div>
 ) : (
 <div style={{ marginTop: 4, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
-<span style={{ color: c.comprobante_estado === "error" ? "#E8B4AC" : T.amber }}>{c.comprobante_estado === "error" ? "⚠ Error al emitir" : "Sin comprobante"}</span>
+<span style={{ color: c.comprobante_estado === "error" ? "#E8B4AC" : T.amber }}>{c.comprobante_estado === "error" ? "⚠ Error al emitir" : "Sin comprobante"}
+<span style={{ display: "block", color: T.ivory, fontWeight: 700, fontSize: 13.5 }}>{c.moneda_comprobante === "PEN" ? "S/" : "US$"} {fmt(c.monto_comprobante ?? c.monto_esperado)}</span>
+</span>
 <BotonEmitirPendiente c={c} puedeEmitir={puedeEmitir} alTerminar={cargar} />
 </div>
 )}
