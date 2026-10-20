@@ -610,6 +610,11 @@ function CorregirPago({ corregirIdInicial, corregirNombreInicial, corregirCodigo
       });
       const data = await resp.json();
       if (!resp.ok || data.error) throw new Error(data.error || "No se pudo liberar el comprobante");
+      // El reseteo del servidor solo reconoce series completas ("B002"), no un
+      // número exacto: si no afectó ningún pago, avisar en vez de seguir.
+      if (!(Number(data.pagosAfectados) > 0)) {
+        throw new Error(`No se pudo liberar ${numero} desde la app (0 pagos afectados). Pídele a Claude el comando para liberarlo en Railway; no emitas todavía.`);
+      }
       setReemitirAviso(`✓ ${tipoViejo} ${numero} liberada (${data.pagosAfectados ?? 1} pago${(data.pagosAfectados ?? 1) === 1 ? "" : "s"}${hermanos ? ", incluye el otro pago que compartía ese comprobante" : ""}). Ahora elige si será boleta o factura y emite el nuevo.`);
       setReemitirId(null);
       if (reservaSel) await seleccionarReserva(reservaSel);
