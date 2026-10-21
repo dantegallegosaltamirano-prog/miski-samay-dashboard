@@ -215,6 +215,13 @@ const [pais, setPais] = useState("");
 const [celular, setCelular] = useState("");
 const [correo, setCorreo] = useState("");
 const [adelantoPagado, setAdelantoPagado] = useState("");
+// Reservas directas (21 oct, pedido de Dante): ¿cómo pagó? — "hotel" (paga
+// todo en el check-out), "adelanto" (parte antes) o "total" (100% antes).
+// El comprobante del check-out sale siempre por el total de la reserva.
+const [formaPago, setFormaPago] = useState("");
+const [formaPagoFalta, setFormaPagoFalta] = useState(false);
+const [adelantoMetodo, setAdelantoMetodo] = useState("");
+const [adelantoFecha, setAdelantoFecha] = useState("");
 
 // Pre-llenado con lo que confirmó el huésped (solo campos vacíos — lo
 // que recepción ya escribió a mano no se pisa). Recepción lo revisa
@@ -291,6 +298,15 @@ const totalSoles = saldoPendienteUsd * (Number(tipoCambio) || 0);
 return { base, impuesto, servicio, comision, totalUsd, netoHotel, totalSoles, saldoPendienteUsd };
 }, [noches, tipoCambio, adelantoPagado]);
 
+// "Pagó el 100%": el adelanto = total de la estadía (se actualiza si cambian
+// las tarifas). "Paga en el hotel": sin adelanto. Fuera de Directo se limpia.
+React.useEffect(() => {
+if (canal !== "Directo") { setFormaPago(""); setAdelantoMetodo(""); setAdelantoFecha(""); return; }
+if (formaPago === "total") setAdelantoPagado(totales.totalUsd > 0 ? totales.totalUsd.toFixed(2) : "");
+if (formaPago === "hotel") { setAdelantoPagado(""); setAdelantoMetodo(""); setAdelantoFecha(""); }
+// eslint-disable-next-line
+}, [formaPago, canal, totales.totalUsd]);
+
 function esFinDeSemana(fechaStr) {
 const d = new Date(fechaStr + "T12:00:00").getDay();
 return d === 5 || d === 6;
@@ -324,6 +340,16 @@ alert("Escribe el nombre de quién refirió esta reserva.");
 return;
 }
 setReferidoFalta(false);
+if (canal === "Directo") {
+if (!formaPago) { setFormaPagoFalta(true); alert("Indica cómo pagó el huésped: en el hotel, un adelanto o el 100% antes."); return; }
+if (formaPago !== "hotel") {
+const ad = Number(adelantoPagado) || 0;
+if (!(ad > 0)) { setFormaPagoFalta(true); alert("Escribe el monto del adelanto (US$)."); return; }
+if (formaPago === "adelanto" && ad >= totales.totalUsd - 0.009) { setFormaPagoFalta(true); alert("El adelanto cubre todo: marca \"Pagó el 100%\"."); return; }
+if (!adelantoMetodo) { setFormaPagoFalta(true); alert("Indica el medio con que pagó (transferencia, Yape, tarjeta/link web o efectivo)."); return; }
+}
+}
+setFormaPagoFalta(false);
 const referidoPorEnviar = canal === "Directo"
 ? (referido === "Otro (especificar)" ? referidoOtro.trim() : referido)
 : null;
@@ -347,7 +373,10 @@ montoServicio: totales.servicio,
 montoComision: totales.comision,
 montoNetoHotel: totales.netoHotel,
 modalidadCobro: CANALES_CON_COLLECT.includes(canal) ? modalidadCobro : "hotel",
-adelantoPagado: adelantoPagado || 0
+adelantoPagado: adelantoPagado || 0,
+formaPagoDirecto: canal === "Directo" ? formaPago : null,
+adelantoMetodo: canal === "Directo" && formaPago !== "hotel" ? adelantoMetodo : null,
+adelantoFecha: canal === "Directo" && formaPago !== "hotel" ? adelantoFecha : null
 })
 })
 .then(r => r.json())
@@ -554,10 +583,50 @@ Booking.com collect: total = base + servicio (sin impuesto) = monto del comproba
 : "Comisión: por ahora se llena a mano si ya la conoces — más adelante se completará sola con el API de Aloha."}
 </div>
 
+{canal === "Directo" ? (
+<div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: `1px solid ${formaPagoFalta ? T.red : T.cardBorder}`, background: T.bg }}>
+<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>¿Cómo pagó?</div>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: formaPago && formaPago !== "hotel" ? 10 : 0 }}>
+{[{ v: "hotel", t: "🏨 Paga en el hotel" }, { v: "adelanto", t: "💵 Adelanto" }, { v: "total", t: "✅ Pagó el 100%" }].map((op) => {
+const sel = formaPago === op.v;
+return (
+<button key={op.v} type="button" onClick={() => { setFormaPago(op.v); setFormaPagoFalta(false); if (op.v === "adelanto" && formaPago === "total") setAdelantoPagado(""); }} style={{
+padding: "9px 4px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+border: sel ? `2px solid ${T.gold}` : `1px solid ${T.cardBorder}`,
+background: sel ? "rgba(201,162,75,0.15)" : T.card, color: sel ? T.gold : T.ivory,
+}}>{op.t}</button>
+);
+})}
+</div>
+{formaPago && formaPago !== "hotel" && (
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1.2fr", gap: 8, alignItems: "end" }}>
+<label style={labelMuted}>Monto (US$)<br />
+<input style={inputStyle} placeholder="0.00" value={adelantoPagado} readOnly={formaPago === "total"} onChange={(e) => setAdelantoPagado(e.target.value)} />
+</label>
+<label style={labelMuted}>Medio<br />
+<select style={inputStyle} value={adelantoMetodo} onChange={(e) => setAdelantoMetodo(e.target.value)}>
+<option value="">Elige…</option>
+<option value="transferencia">Transferencia</option>
+<option value="yape">Yape</option>
+<option value="pos">Tarjeta / link web</option>
+<option value="efectivo">Efectivo</option>
+</select>
+</label>
+<label style={labelMuted}>Fecha del pago<br />
+<input type="date" style={inputStyle} value={adelantoFecha} onChange={(e) => setAdelantoFecha(e.target.value)} />
+</label>
+</div>
+)}
+<div style={{ fontSize: 10.5, color: T.ivoryMuted, marginTop: 8 }}>
+El comprobante del check-out saldrá siempre por el total de la reserva (US$ {fmt(totales.totalUsd)}); lo pagado antes se descuenta del cobro.
+</div>
+</div>
+) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 10 }}>
 <span style={{ ...labelMuted, whiteSpace: "nowrap" }}>Adelanto pagado (US$)</span>
 <input style={{ ...inputStyle, maxWidth: 120 }} placeholder="0.00" value={adelantoPagado} onChange={(e) => setAdelantoPagado(e.target.value)} />
 </div>
+)}
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 12.5, color: T.ivoryMuted }}>
 <span>Saldo pendiente (US$)</span>
 <span>US$ {fmt(totales.saldoPendienteUsd)}</span>
