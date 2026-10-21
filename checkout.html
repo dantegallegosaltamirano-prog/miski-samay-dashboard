@@ -3159,6 +3159,14 @@ function CheckoutPantalla() {
             {/* ADELANTO — siempre en USD */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelanto ya pagado (US$)</div>
+              {(folio?.formaPagoDirecto === "total" || folio?.formaPagoDirecto === "adelanto" || folio?.adelantoMetodo) && (
+                <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
+                  {folio.formaPagoDirecto === "total" ? "Pagó el 100% antes" : "Adelanto"}
+                  {folio.adelantoMetodo ? ` · ${({ transferencia: "Transferencia", yape: "Yape", pos: "Tarjeta / link web", efectivo: "Efectivo" })[folio.adelantoMetodo] || folio.adelantoMetodo}` : ""}
+                  {folio.adelantoFecha ? ` · ${String(folio.adelantoFecha).slice(8, 10)}/${String(folio.adelantoFecha).slice(5, 7)}/${String(folio.adelantoFecha).slice(0, 4)}` : ""}
+                  {" — el comprobante sale por el total; esto no se cobra hoy."}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                 <span style={{ fontSize: 14, color: T.ivoryMuted }}>US$</span>
                 <input type="number" min="0" step="0.01" value={adelantoMonto}
