@@ -2529,6 +2529,9 @@ function CheckoutPantalla() {
 
   // El adelanto siempre viene en USD desde el backend.
   const [adelantoMonto, setAdelantoMonto] = useState(0);
+  // Moneda en que el huésped pagó el adelanto (24 oct): S/ o US$. El monto
+  // se escribe en ESA moneda y se convierte con el tipo de cambio del cobro.
+  const [adelantoMoneda, setAdelantoMoneda] = useState("USD");
   const [aplicarAdelantoA, setAplicarAdelantoA] = useState("ninguno");
 
   const [monedaHospedaje, setMonedaHospedaje] = useState("USD");
@@ -2601,7 +2604,9 @@ function CheckoutPantalla() {
         if (data.error) { setErrorFolio(data.error); setCargandoFolio(false); return; }
         setFolio(data);
         const adelanto = Number(data.adelantoPagado) || 0;
-        setAdelantoMonto(adelanto);
+        const enSoles = data.adelantoMoneda === "PEN" && Number(data.adelantoMontoOriginal) > 0;
+        setAdelantoMoneda(enSoles ? "PEN" : "USD");
+        setAdelantoMonto(enSoles ? Number(data.adelantoMontoOriginal) : adelanto);
         setAplicarAdelantoA(adelanto > 0 ? "hospedaje" : "ninguno");
         const tc = Number(data.tipoCambio) || 0;
         setTipoCambioHospedaje(tc);
@@ -2624,49 +2629,50 @@ function CheckoutPantalla() {
   const consumoSoles = folio ? Number(folio.totalConsumosSoles) || 0 : 0;
   const consumoUsd = tipoCambioRef ? consumoSoles / tipoCambioRef : 0;
 
-  // El adelanto siempre viene y se edita en USD.
-  const adelantoUsd = adelantoMonto;
-  const adelantoSoles = tipoCambioRef ? adelantoUsd * tipoCambioRef : 0;
+  // Montos por línea en la MONEDA DE COBRO (24 oct, pedido de Dante):
+  //   1) Reserva (monto de la reserva, convertido si se cobra en la otra moneda)
+  //   2) − Adelanto (en la moneda en que se pagó, convertido a la de cobro)
+  //   3) = Saldo a cobrar hoy
+  // El comprobante sale por la línea 1 (reserva), con el adelanto como parte
+  // "adelanto" del pago mixto (ver sumarAdelanto).
+  const tcHosp = Number(tipoCambioHospedaje) || 0;
+  const tcCons = Number(tipoCambioConsumo) || 0;
+  function convertir(monto, de, a, tc) {
+    if (de === a) return monto;
+    if (!(tc > 0)) return 0;
+    return de === "USD" ? monto * tc : monto / tc;
+  }
+  const adelantoNum = Number(adelantoMonto) || 0;
+  const adelantoUsdEq = adelantoMoneda === "USD" ? adelantoNum : (tipoCambioRef ? adelantoNum / tipoCambioRef : 0);
 
-  const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsd) : hospedajeUsd;
+  const reservaHospEnMoneda = convertir(hospedajeUsd, "USD", monedaHospedaje, tcHosp);
+  const adelantoHospEnMonedaBruto = aplicarAdelantoA === "hospedaje" ? convertir(adelantoNum, adelantoMoneda, monedaHospedaje, tcHosp) : 0;
+  const adelantoHospEnMoneda = Math.min(adelantoHospEnMonedaBruto, reservaHospEnMoneda);
+  const montoCobroHospedaje = Math.max(0, reservaHospEnMoneda - adelantoHospEnMoneda);
+  const necesitaTcHosp = monedaHospedaje === "PEN" || (aplicarAdelantoA === "hospedaje" && adelantoNum > 0 && adelantoMoneda !== monedaHospedaje);
+
+  const reservaConsEnMoneda = convertir(consumoSoles, "PEN", monedaConsumo, tcCons);
+  const adelantoConsEnMonedaBruto = aplicarAdelantoA === "consumo" ? convertir(adelantoNum, adelantoMoneda, monedaConsumo, tcCons) : 0;
+  const adelantoConsEnMoneda = Math.min(adelantoConsEnMonedaBruto, reservaConsEnMoneda);
+  const montoCobroConsumo = Math.max(0, reservaConsEnMoneda - adelantoConsEnMoneda);
+  const necesitaTcCons = monedaConsumo === "USD" || (aplicarAdelantoA === "consumo" && adelantoNum > 0 && adelantoMoneda !== monedaConsumo);
+
+  // Compatibilidad con el resto de la pantalla (resumen/vistas previas).
+  const usaTipoCambioHospedaje = necesitaTcHosp;
+  const usaTipoCambioConsumo = necesitaTcCons;
+  const adelantoUsd = adelantoUsdEq;
+  const adelantoSoles = adelantoMoneda === "PEN" ? adelantoNum : (tipoCambioRef ? adelantoNum * tipoCambioRef : 0);
+
+  // ¿Queda saldo? Se evalúa en US$ equivalentes con el TC referencial (para
+  // no depender de que ya se haya escrito el TC del cobro), y se confirma con
+  // el monto convertido cuando el TC ya está.
+  const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsdEq) : hospedajeUsd;
   const saldoConsumoSoles = aplicarAdelantoA === "consumo" ? Math.max(0, consumoSoles - adelantoSoles) : consumoSoles;
+  const hayHospedajeQueCobrar = (necesitaTcHosp && tcHosp > 0) ? montoCobroHospedaje > 0.009 : saldoHospedajeUsd > 0.009;
+  const hayConsumoQueCobrar = (necesitaTcCons && tcCons > 0) ? montoCobroConsumo > 0.009 : saldoConsumoSoles > 0.009;
 
-  // Monto final a cobrar por línea, según la moneda elegida.
-  // Si coincide con la moneda nativa del concepto, no requiere tipo de cambio.
-  const usaTipoCambioHospedaje = monedaHospedaje === "PEN"; // hospedaje nativo = USD
-  const usaTipoCambioConsumo = monedaConsumo === "USD";     // consumo nativo = PEN
-
-  const montoCobroHospedaje = usaTipoCambioHospedaje
-    ? saldoHospedajeUsd * (Number(tipoCambioHospedaje) || 0)
-    : saldoHospedajeUsd;
-  const montoCobroConsumo = usaTipoCambioConsumo
-    ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSoles / Number(tipoCambioConsumo) : 0)
-    : saldoConsumoSoles;
-
-  // Si hay saldo pendiente (después del adelanto) es independiente de la moneda
-  // elegida para cobrarlo y de si ya se llenó el tipo de cambio — antes esto se
-  // calculaba sobre el monto YA convertido, así que al elegir cobrar el
-  // hospedaje en soles (antes de escribir el tipo de cambio) el monto convertido
-  // era S/.0.00, esto se leía como "no hay nada que cobrar", el campo de tipo de
-  // cambio se ocultaba (dependía de esta misma bandera) y aparecía "Cubierto por
-  // adelanto" aunque sí quedaba saldo real por cobrar — un candado sin llave.
-  const hayHospedajeQueCobrar = saldoHospedajeUsd > 0.009;
-  const hayConsumoQueCobrar = saldoConsumoSoles > 0.009;
-
-  // Comprobante por el TOTAL (20 oct, pedido de Dante): el adelanto se resta
-  // para cobrar hoy, pero el comprobante debe salir por el total. Se envía
-  // como una parte "adelanto" del pago mixto de esa línea. Si el adelanto
-  // cubre todo, la línea va solo con esa parte (en US$ para el hospedaje).
-  const adelantoHospUsd = aplicarAdelantoA === "hospedaje" ? Math.min(adelantoUsd, hospedajeUsd) : 0;
-  const monedaLineaHospedaje = hayHospedajeQueCobrar ? monedaHospedaje : "USD";
-  const adelantoHospEnMoneda = monedaLineaHospedaje === "PEN"
-    ? adelantoHospUsd * (Number(tipoCambioHospedaje) || 0)
-    : adelantoHospUsd;
-  const adelantoConsSoles = aplicarAdelantoA === "consumo" ? Math.min(adelantoSoles, consumoSoles) : 0;
-  const monedaLineaConsumo = hayConsumoQueCobrar ? monedaConsumo : "PEN";
-  const adelantoConsEnMoneda = monedaLineaConsumo === "USD"
-    ? (Number(tipoCambioConsumo) > 0 ? adelantoConsSoles / Number(tipoCambioConsumo) : 0)
-    : adelantoConsSoles;
+  const monedaLineaHospedaje = monedaHospedaje;
+  const monedaLineaConsumo = monedaConsumo;
   const hayLineaHospedaje = hayHospedajeQueCobrar || adelantoHospEnMoneda > 0.009;
   const hayLineaConsumo = hayConsumoQueCobrar || adelantoConsEnMoneda > 0.009;
 
@@ -2714,8 +2720,8 @@ function CheckoutPantalla() {
   const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
   const mixtoPropinaOk = metodoPropina !== "mixto" || !hayPropinaQueCobrar || Math.abs(sumaMixtoPropina - round2(Number(montoPropina) || 0)) < 0.01;
 
-  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
-  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
+  const tipoCambioHospedajeOk = !necesitaTcHosp || !hayLineaHospedaje || tcHosp > 0;
+  const tipoCambioConsumoOk = !necesitaTcCons || !hayLineaConsumo || tcCons > 0;
 
   const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
 
@@ -2723,7 +2729,7 @@ function CheckoutPantalla() {
     const pagos = [];
     if (hayLineaHospedaje) {
       let linea = { concepto: "hospedaje", monto: hayHospedajeQueCobrar ? round2(montoCobroHospedaje) : 0, moneda: monedaLineaHospedaje, metodoPago: metodoHospedaje };
-      if (monedaLineaHospedaje === "PEN") linea.tipoCambio = Number(tipoCambioHospedaje);
+      if (necesitaTcHosp) linea.tipoCambio = tcHosp;
       if (hayHospedajeQueCobrar && metodoHospedaje === "mixto") {
         linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
       }
@@ -2739,7 +2745,7 @@ function CheckoutPantalla() {
     }
     if (hayLineaConsumo) {
       let linea = { concepto: "consumo", monto: hayConsumoQueCobrar ? round2(montoCobroConsumo) : 0, moneda: monedaLineaConsumo, metodoPago: metodoConsumo };
-      if (monedaLineaConsumo === "USD") linea.tipoCambio = Number(tipoCambioConsumo);
+      if (necesitaTcCons) linea.tipoCambio = tcCons;
       if (hayConsumoQueCobrar && metodoConsumo === "mixto") {
         linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
       }
@@ -3035,23 +3041,38 @@ function CheckoutPantalla() {
               {["Booking.com", "Expedia"].includes(folio.canalOrigen) && (
                 <BotonModalidadCobro reservaId={reservaSel.reserva_id} canal={folio.canalOrigen} actual="hotel" onCambio={cargarFolio} />
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
-                <span>US$ {fmt(hospedajeUsd)}</span>
-                <span>≈ S/ {fmt(hospedajeSoles)}</span>
-              </div>
-              {aplicarAdelantoA === "hospedaje" && adelantoMonto > 0 && (
-                <div style={{ fontSize: 11.5, color: T.green, marginBottom: 8 }}>
-                  − Adelanto aplicado: US$ {fmt(adelantoUsd)} → saldo US$ {fmt(saldoHospedajeUsd)}
-                </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
                 <BotonMoneda moneda={monedaHospedaje} onChange={setMonedaHospedaje} />
               </div>
+              {(() => {
+                const sim = monedaHospedaje === "USD" ? "US$" : "S/";
+                const simAd = adelantoMoneda === "USD" ? "US$" : "S/";
+                const hayAd = aplicarAdelantoA === "hospedaje" && adelantoNum > 0;
+                const fila = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" };
+                return (
+                  <div style={{ background: T.bg, borderRadius: 10, padding: "8px 12px", marginBottom: 6 }}>
+                    <div style={fila}>
+                      <span>Reserva <span style={{ color: T.ivoryMuted }}>(US$ {fmt(hospedajeUsd)})</span></span>
+                      <span style={{ fontWeight: 600 }}>{sim} {fmt(reservaHospEnMoneda)}</span>
+                    </div>
+                    {hayAd && (
+                      <div style={{ ...fila, color: T.green }}>
+                        <span>− Adelanto <span style={{ color: T.ivoryMuted }}>({simAd} {fmt(adelantoNum)})</span></span>
+                        <span>− {sim} {fmt(adelantoHospEnMoneda)}</span>
+                      </div>
+                    )}
+                    <div style={{ ...fila, borderTop: `1px solid ${T.cardBorder}`, marginTop: 4, paddingTop: 6, fontWeight: 700 }}>
+                      <span>{hayAd ? "Saldo a cobrar hoy" : "A cobrar"}</span>
+                      <span style={{ color: T.gold }}>{sim} {fmt(montoCobroHospedaje)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
-              {usaTipoCambioHospedaje && hayHospedajeQueCobrar && (
+              {necesitaTcHosp && hayLineaHospedaje && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (venta) — S/ por US$1:</span>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio — S/ por US$1:</span>
                   <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
                     onChange={(e) => setTipoCambioHospedaje(e.target.value)}
                     style={{
@@ -3093,7 +3114,7 @@ function CheckoutPantalla() {
               )}
               {aplicarAdelantoA === "consumo" && adelantoMonto > 0 && (
                 <div style={{ fontSize: 11.5, color: T.green, marginBottom: 8 }}>
-                  − Adelanto aplicado: S/ {fmt(adelantoSoles)} → saldo S/ {fmt(saldoConsumoSoles)}
+                  − Adelanto ({adelantoMoneda === "USD" ? "US$" : "S/"} {fmt(adelantoNum)}): − {monedaConsumo === "USD" ? "US$" : "S/"} {fmt(adelantoConsEnMoneda)} → saldo {monedaConsumo === "USD" ? "US$" : "S/"} {fmt(montoCobroConsumo)}
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
@@ -3101,7 +3122,7 @@ function CheckoutPantalla() {
                 <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
               </div>
 
-              {usaTipoCambioConsumo && hayConsumoQueCobrar && (
+              {necesitaTcCons && hayLineaConsumo && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
                   <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
                   <input type="number" min="0" step="0.001" value={tipoCambioConsumo}
@@ -3156,9 +3177,9 @@ function CheckoutPantalla() {
               )}
             </div>
 
-            {/* ADELANTO — siempre en USD */}
+            {/* ADELANTO — en la moneda en que se pagó (S/ o US$) */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelanto ya pagado (US$)</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelanto ya pagado</div>
               {(folio?.formaPagoDirecto === "total" || folio?.formaPagoDirecto === "adelanto" || folio?.adelantoMetodo) && (
                 <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>
                   {folio.formaPagoDirecto === "total" ? "Pagó el 100% antes" : "Adelanto"}
@@ -3167,15 +3188,17 @@ function CheckoutPantalla() {
                   {" — el comprobante sale por el total; esto no se cobra hoy."}
                 </div>
               )}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <span style={{ fontSize: 14, color: T.ivoryMuted }}>US$</span>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 14, color: T.ivoryMuted }}>{adelantoMoneda === "USD" ? "US$" : "S/"}</span>
                 <input type="number" min="0" step="0.01" value={adelantoMonto}
                   onChange={(e) => setAdelantoMonto(Number(e.target.value) || 0)}
                   style={{
                     flex: 1, background: T.bg, border: `1px solid ${T.cardBorder}`, borderRadius: 8,
                     padding: "9px 12px", color: T.ivory, fontSize: 14,
                   }} />
+                <BotonMoneda moneda={adelantoMoneda} onChange={setAdelantoMoneda} />
               </div>
+              <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 10 }}>Escribe el adelanto en la moneda en que lo pagó el huésped; se convierte solo a la moneda del cobro.</div>
               <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 8 }}>Aplicar este adelanto a:</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {[
