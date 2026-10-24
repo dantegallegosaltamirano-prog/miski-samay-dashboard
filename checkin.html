@@ -222,6 +222,8 @@ const [formaPago, setFormaPago] = useState("");
 const [formaPagoFalta, setFormaPagoFalta] = useState(false);
 const [adelantoMetodo, setAdelantoMetodo] = useState("");
 const [adelantoFecha, setAdelantoFecha] = useState("");
+// Moneda del adelanto (24 oct): el huésped puede adelantar en S/ o US$.
+const [adelantoMonedaCI, setAdelantoMonedaCI] = useState("USD");
 
 // Pre-llenado con lo que confirmó el huésped (solo campos vacíos — lo
 // que recepción ya escribió a mano no se pisa). Recepción lo revisa
@@ -302,7 +304,7 @@ return { base, impuesto, servicio, comision, totalUsd, netoHotel, totalSoles, sa
 // las tarifas). "Paga en el hotel": sin adelanto. Fuera de Directo se limpia.
 React.useEffect(() => {
 if (canal !== "Directo") { setFormaPago(""); setAdelantoMetodo(""); setAdelantoFecha(""); return; }
-if (formaPago === "total") setAdelantoPagado(totales.totalUsd > 0 ? totales.totalUsd.toFixed(2) : "");
+if (formaPago === "total") { setAdelantoMonedaCI("USD"); setAdelantoPagado(totales.totalUsd > 0 ? totales.totalUsd.toFixed(2) : ""); }
 if (formaPago === "hotel") { setAdelantoPagado(""); setAdelantoMetodo(""); setAdelantoFecha(""); }
 // eslint-disable-next-line
 }, [formaPago, canal, totales.totalUsd]);
@@ -345,7 +347,7 @@ if (!formaPago) { setFormaPagoFalta(true); alert("Indica cómo pagó el huésped
 if (formaPago !== "hotel") {
 const ad = Number(adelantoPagado) || 0;
 if (!(ad > 0)) { setFormaPagoFalta(true); alert("Escribe el monto del adelanto (US$)."); return; }
-if (formaPago === "adelanto" && ad >= totales.totalUsd - 0.009) { setFormaPagoFalta(true); alert("El adelanto cubre todo: marca \"Pagó el 100%\"."); return; }
+if (formaPago === "adelanto" && adelantoMonedaCI === "USD" && ad >= totales.totalUsd - 0.009) { setFormaPagoFalta(true); alert("El adelanto cubre todo: marca \"Pagó el 100%\"."); return; }
 if (!adelantoMetodo) { setFormaPagoFalta(true); alert("Indica el medio con que pagó (transferencia, Yape, tarjeta/link web o efectivo)."); return; }
 }
 }
@@ -376,7 +378,9 @@ modalidadCobro: CANALES_CON_COLLECT.includes(canal) ? modalidadCobro : "hotel",
 adelantoPagado: adelantoPagado || 0,
 formaPagoDirecto: canal === "Directo" ? formaPago : null,
 adelantoMetodo: canal === "Directo" && formaPago !== "hotel" ? adelantoMetodo : null,
-adelantoFecha: canal === "Directo" && formaPago !== "hotel" ? adelantoFecha : null
+adelantoFecha: canal === "Directo" && formaPago !== "hotel" ? adelantoFecha : null,
+adelantoMoneda: canal === "Directo" && formaPago !== "hotel" ? adelantoMonedaCI : null,
+adelantoMontoOriginal: canal === "Directo" && formaPago !== "hotel" ? (Number(adelantoPagado) || 0) : null
 })
 })
 .then(r => r.json())
@@ -600,8 +604,16 @@ background: sel ? "rgba(201,162,75,0.15)" : T.card, color: sel ? T.gold : T.ivor
 </div>
 {formaPago && formaPago !== "hotel" && (
 <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1.2fr", gap: 8, alignItems: "end" }}>
-<label style={labelMuted}>Monto (US$)<br />
+<label style={labelMuted}>Monto ({adelantoMonedaCI === "USD" ? "US$" : "S/"})<br />
+<div style={{ display: "flex", gap: 4 }}>
 <input style={inputStyle} placeholder="0.00" value={adelantoPagado} readOnly={formaPago === "total"} onChange={(e) => setAdelantoPagado(e.target.value)} />
+{formaPago === "adelanto" && (
+<select style={{ ...inputStyle, width: 64 }} value={adelantoMonedaCI} onChange={(e) => setAdelantoMonedaCI(e.target.value)}>
+<option value="USD">US$</option>
+<option value="PEN">S/</option>
+</select>
+)}
+</div>
 </label>
 <label style={labelMuted}>Medio<br />
 <select style={inputStyle} value={adelantoMetodo} onChange={(e) => setAdelantoMetodo(e.target.value)}>
@@ -629,7 +641,7 @@ El comprobante del check-out saldrá siempre por el total de la reserva (US$ {fm
 )}
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 12.5, color: T.ivoryMuted }}>
 <span>Saldo pendiente (US$)</span>
-<span>US$ {fmt(totales.saldoPendienteUsd)}</span>
+<span>{canal === "Directo" && formaPago === "adelanto" && adelantoMonedaCI === "PEN" ? "se calcula en el check-out (adelanto en S/)" : `US$ ${fmt(totales.saldoPendienteUsd)}`}</span>
 </div>
 
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>Ver montos y tipo de cambio en Aloha · no llegan por iCal</div>
