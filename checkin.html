@@ -435,9 +435,10 @@ return (
 )}
 <div style={{ borderTop: `1px solid ${T.cardBorder}`, marginTop: 20, paddingTop: 16, textAlign: "left", fontSize: 12.5 }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Total estadía (US$)</span><span>US$ {fmt(totales.totalUsd)}</span></div>
-<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Adelanto pagado (US$)</span><span>US$ {fmt(Number(adelantoPagado) || 0)}</span></div>
-<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Saldo pendiente (US$)</span><span>US$ {fmt(totales.saldoPendienteUsd)}</span></div>
-<div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 15 }}><span>Total a cobrar (S/)</span><span style={{ color: T.gold }}>S/ {fmt(totales.totalSoles)}</span></div>
+{(Number(adelantoPagado) || 0) > 0 && (
+<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ color: T.ivoryMuted }}>Adelanto registrado</span><span>{canal === "Directo" && adelantoMonedaCI === "PEN" ? "S/" : "US$"} {fmt(Number(adelantoPagado) || 0)}</span></div>
+)}
+<div style={{ fontSize: 11, color: T.ivoryMuted }}>El saldo se calcula en el check-out, en la moneda en que se cobre.</div>
 </div>
 <a href="index.html" style={{ display: "block", marginTop: 24, color: T.gold, fontSize: 13, textDecoration: "none" }}>← Volver al panel</a>
 </div>
@@ -639,9 +640,8 @@ El comprobante del check-out saldrá siempre por el total de la reserva (US$ {fm
 <input style={{ ...inputStyle, maxWidth: 120 }} placeholder="0.00" value={adelantoPagado} onChange={(e) => setAdelantoPagado(e.target.value)} />
 </div>
 )}
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 12.5, color: T.ivoryMuted }}>
-<span>Saldo pendiente (US$)</span>
-<span>{canal === "Directo" && formaPago === "adelanto" && adelantoMonedaCI === "PEN" ? "se calcula en el check-out (adelanto en S/)" : `US$ ${fmt(totales.saldoPendienteUsd)}`}</span>
+<div style={{ fontSize: 11, color: T.ivoryMuted, padding: "8px 0" }}>
+El check-in solo registra el adelanto (en su moneda). El saldo se calcula en el check-out, con el tipo de cambio del día.
 </div>
 
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginTop: 10 }}>Ver montos y tipo de cambio en Aloha · no llegan por iCal</div>
