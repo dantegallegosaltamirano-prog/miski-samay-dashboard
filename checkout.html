@@ -2532,6 +2532,9 @@ function CheckoutPantalla() {
   // Moneda en que el huésped pagó el adelanto (24 oct): S/ o US$. El monto
   // se escribe en ESA moneda y se convierte con el tipo de cambio del cobro.
   const [adelantoMoneda, setAdelantoMoneda] = useState("USD");
+  // Tipo de cambio PROPIO del adelanto (24 oct): independiente del de la
+  // reserva — p. ej. el del día en que el huésped pagó el adelanto.
+  const [tipoCambioAdelanto, setTipoCambioAdelanto] = useState(0);
   const [aplicarAdelantoA, setAplicarAdelantoA] = useState("ninguno");
 
   const [monedaHospedaje, setMonedaHospedaje] = useState("USD");
@@ -2610,6 +2613,7 @@ function CheckoutPantalla() {
         setAplicarAdelantoA(adelanto > 0 ? "hospedaje" : "ninguno");
         const tc = Number(data.tipoCambio) || 0;
         setTipoCambioHospedaje(tc);
+        setTipoCambioAdelanto(tc);
         setTipoCambioConsumo(tc);
         setCargandoFolio(false);
       })
@@ -2637,6 +2641,7 @@ function CheckoutPantalla() {
   // "adelanto" del pago mixto (ver sumarAdelanto).
   const tcHosp = Number(tipoCambioHospedaje) || 0;
   const tcCons = Number(tipoCambioConsumo) || 0;
+  const tcAdel = Number(tipoCambioAdelanto) || 0;
   function convertir(monto, de, a, tc) {
     if (de === a) return monto;
     if (!(tc > 0)) return 0;
@@ -2646,16 +2651,19 @@ function CheckoutPantalla() {
   const adelantoUsdEq = adelantoMoneda === "USD" ? adelantoNum : (tipoCambioRef ? adelantoNum / tipoCambioRef : 0);
 
   const reservaHospEnMoneda = convertir(hospedajeUsd, "USD", monedaHospedaje, tcHosp);
-  const adelantoHospEnMonedaBruto = aplicarAdelantoA === "hospedaje" ? convertir(adelantoNum, adelantoMoneda, monedaHospedaje, tcHosp) : 0;
+  const adelantoHospEnMonedaBruto = aplicarAdelantoA === "hospedaje" ? convertir(adelantoNum, adelantoMoneda, monedaHospedaje, tcAdel) : 0;
   const adelantoHospEnMoneda = Math.min(adelantoHospEnMonedaBruto, reservaHospEnMoneda);
   const montoCobroHospedaje = Math.max(0, reservaHospEnMoneda - adelantoHospEnMoneda);
-  const necesitaTcHosp = monedaHospedaje === "PEN" || (aplicarAdelantoA === "hospedaje" && adelantoNum > 0 && adelantoMoneda !== monedaHospedaje);
+  const necesitaTcHosp = monedaHospedaje === "PEN";
+  const necesitaTcAdelHosp = aplicarAdelantoA === "hospedaje" && adelantoNum > 0 && adelantoMoneda !== monedaHospedaje;
 
   const reservaConsEnMoneda = convertir(consumoSoles, "PEN", monedaConsumo, tcCons);
-  const adelantoConsEnMonedaBruto = aplicarAdelantoA === "consumo" ? convertir(adelantoNum, adelantoMoneda, monedaConsumo, tcCons) : 0;
+  const adelantoConsEnMonedaBruto = aplicarAdelantoA === "consumo" ? convertir(adelantoNum, adelantoMoneda, monedaConsumo, tcAdel) : 0;
   const adelantoConsEnMoneda = Math.min(adelantoConsEnMonedaBruto, reservaConsEnMoneda);
   const montoCobroConsumo = Math.max(0, reservaConsEnMoneda - adelantoConsEnMoneda);
-  const necesitaTcCons = monedaConsumo === "USD" || (aplicarAdelantoA === "consumo" && adelantoNum > 0 && adelantoMoneda !== monedaConsumo);
+  const necesitaTcCons = monedaConsumo === "USD";
+  const necesitaTcAdelCons = aplicarAdelantoA === "consumo" && adelantoNum > 0 && adelantoMoneda !== monedaConsumo;
+  const tipoCambioAdelantoOk = !(necesitaTcAdelHosp || necesitaTcAdelCons) || tcAdel > 0;
 
   // Compatibilidad con el resto de la pantalla (resumen/vistas previas).
   const usaTipoCambioHospedaje = necesitaTcHosp;
@@ -2668,8 +2676,10 @@ function CheckoutPantalla() {
   // el monto convertido cuando el TC ya está.
   const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, hospedajeUsd - adelantoUsdEq) : hospedajeUsd;
   const saldoConsumoSoles = aplicarAdelantoA === "consumo" ? Math.max(0, consumoSoles - adelantoSoles) : consumoSoles;
-  const hayHospedajeQueCobrar = (necesitaTcHosp && tcHosp > 0) ? montoCobroHospedaje > 0.009 : saldoHospedajeUsd > 0.009;
-  const hayConsumoQueCobrar = (necesitaTcCons && tcCons > 0) ? montoCobroConsumo > 0.009 : saldoConsumoSoles > 0.009;
+  const tcHospListo = (!necesitaTcHosp || tcHosp > 0) && (!necesitaTcAdelHosp || tcAdel > 0);
+  const tcConsListo = (!necesitaTcCons || tcCons > 0) && (!necesitaTcAdelCons || tcAdel > 0);
+  const hayHospedajeQueCobrar = tcHospListo ? montoCobroHospedaje > 0.009 : saldoHospedajeUsd > 0.009;
+  const hayConsumoQueCobrar = tcConsListo ? montoCobroConsumo > 0.009 : saldoConsumoSoles > 0.009;
 
   const monedaLineaHospedaje = monedaHospedaje;
   const monedaLineaConsumo = monedaConsumo;
@@ -2723,7 +2733,7 @@ function CheckoutPantalla() {
   const tipoCambioHospedajeOk = !necesitaTcHosp || !hayLineaHospedaje || tcHosp > 0;
   const tipoCambioConsumoOk = !necesitaTcCons || !hayLineaConsumo || tcCons > 0;
 
-  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk && tipoCambioAdelantoOk;
 
   function construirPagos() {
     const pagos = [];
@@ -3053,12 +3063,28 @@ function CheckoutPantalla() {
                 return (
                   <div style={{ background: T.bg, borderRadius: 10, padding: "8px 12px", marginBottom: 6 }}>
                     <div style={fila}>
-                      <span>Reserva <span style={{ color: T.ivoryMuted }}>(US$ {fmt(hospedajeUsd)})</span></span>
+                      <span>Reserva <span style={{ color: T.ivoryMuted }}>US$ {fmt(hospedajeUsd)}{monedaHospedaje === "PEN" ? ` × ${tcHosp || "?"}` : ""}</span></span>
                       <span style={{ fontWeight: 600 }}>{sim} {fmt(reservaHospEnMoneda)}</span>
                     </div>
                     {hayAd && (
-                      <div style={{ ...fila, color: T.green }}>
-                        <span>− Adelanto <span style={{ color: T.ivoryMuted }}>({simAd} {fmt(adelantoNum)})</span></span>
+                      <div style={{ ...fila, color: T.green, alignItems: "center" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          − Adelanto
+                          <span style={{ color: T.ivoryMuted }}>
+                            {simAd} {fmt(adelantoNum)}
+                            {adelantoMoneda !== monedaHospedaje ? (adelantoMoneda === "USD" ? ` × ${tcAdel || "?"}` : ` ÷ ${tcAdel || "?"}`) : ""}
+                          </span>
+                          {/* Moneda en que se registró el adelanto (se puede corregir aquí) */}
+                          <span style={{ display: "inline-flex", border: `1px solid ${T.cardBorder}`, borderRadius: 6, overflow: "hidden" }}>
+                            {["USD", "PEN"].map((m) => (
+                              <button key={m} type="button" onClick={() => setAdelantoMoneda(m)} style={{
+                                border: "none", padding: "2px 6px", fontSize: 10.5, cursor: "pointer",
+                                background: adelantoMoneda === m ? "rgba(201,162,75,0.25)" : "transparent",
+                                color: adelantoMoneda === m ? T.gold : T.ivoryMuted,
+                              }}>{m === "USD" ? "US$" : "S/"}</button>
+                            ))}
+                          </span>
+                        </span>
                         <span>− {sim} {fmt(adelantoHospEnMoneda)}</span>
                       </div>
                     )}
@@ -3070,9 +3096,20 @@ function CheckoutPantalla() {
                 );
               })()}
 
+              {necesitaTcAdelHosp && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.green, flex: 1 }}>Tipo de cambio del adelanto — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioAdelanto}
+                    onChange={(e) => setTipoCambioAdelanto(e.target.value)}
+                    style={{
+                      width: 90, background: T.bg, border: `1px solid ${tcAdel > 0 ? T.cardBorder : T.red}`,
+                      borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13,
+                    }} />
+                </div>
+              )}
               {necesitaTcHosp && hayLineaHospedaje && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio — S/ por US$1:</span>
+                  <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio de la reserva — S/ por US$1:</span>
                   <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
                     onChange={(e) => setTipoCambioHospedaje(e.target.value)}
                     style={{
@@ -3122,6 +3159,14 @@ function CheckoutPantalla() {
                 <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
               </div>
 
+              {necesitaTcAdelCons && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <span style={{ fontSize: 11.5, color: T.green, flex: 1 }}>Tipo de cambio del adelanto — S/ por US$1:</span>
+                  <input type="number" min="0" step="0.001" value={tipoCambioAdelanto}
+                    onChange={(e) => setTipoCambioAdelanto(e.target.value)}
+                    style={{ width: 90, background: T.bg, border: `1px solid ${tcAdel > 0 ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+                </div>
+              )}
               {necesitaTcCons && hayLineaConsumo && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
                   <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
