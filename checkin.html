@@ -131,6 +131,11 @@ const [enviando, setEnviando] = useState(false);
 
 const [tipoCambio, setTipoCambio] = useState("3.75");
 const [canal, setCanal] = useState("Directo");
+// Candado de canal (26 oct, pedido de Dante): una reserva de Booking/Expedia
+// no debe quedar como "Directo" por error, porque entonces no pasa a Cobros
+// de OTA. Para Directo se exige confirmar que se revisó en Aloha.
+const [canalConfirmado, setCanalConfirmado] = useState(false);
+const [canalFalta, setCanalFalta] = useState(false);
 const [referido, setReferido] = useState("");
 const [referidoOtro, setReferidoOtro] = useState("");
 const [referidoFalta, setReferidoFalta] = useState(false);
@@ -326,6 +331,12 @@ if (!numeroDocumento) { alert("Ingresa el número de documento antes de continua
 if (!pais) { alert("Selecciona el país del huésped antes de continuar."); return; }
 if (!celular) { alert("Ingresa el celular del huésped antes de continuar."); return; }
 if (!correo) { alert("Ingresa el correo del huésped antes de continuar."); return; }
+if (canal === "Directo" && !canalConfirmado) {
+setCanalFalta(true);
+alert("Confirma que revisaste en Aloha que esta reserva es DIRECTA (no Booking ni Expedia). Marca la casilla junto al canal.");
+return;
+}
+setCanalFalta(false);
 if (CANALES_CON_COLLECT.includes(canal) && !modalidadCobro) {
 setModalidadFalta(true);
 alert(`Indica quién cobró el hospedaje: el hotel (Hotel collect) o ${canal} (${canal} collect).`);
@@ -516,7 +527,7 @@ Por ahora se llenan a mano (el escaneo automático vuelve cuando esté lista la 
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
 <div style={{ fontSize: 13, fontWeight: 600 }}>Tarifa de alojamiento (US$)</div>
 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-<select value={canal} onChange={(e) => setCanal(e.target.value)} style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "4px 8px", fontSize: 12 }}>
+<select value={canal} onChange={(e) => { setCanal(e.target.value); setCanalConfirmado(false); }} style={{ background: T.bg, border: `1px solid ${canalFalta ? T.red : T.cardBorder}`, color: T.ivory, borderRadius: 8, padding: "4px 8px", fontSize: 12 }}>
 <option>Directo</option><option>Booking.com</option><option>Expedia</option><option>Airbnb</option><option>Lima Tours</option><option>HyperGuest</option>
 </select>
 
@@ -538,6 +549,29 @@ style={{ background: T.bg, border: `1px solid ${T.cardBorder}`, color: T.ivory, 
 
 </div>
 </div>
+
+{(() => {
+// Canal detectado por Aloha (iCal) o por el formulario de pre-llegada.
+const OTAS = ["Booking.com", "Expedia", "Airbnb", "HyperGuest", "Lima Tours"];
+const detectados = [reserva?.canal, prellegada?.canal].filter((c) => c && OTAS.includes(c));
+const otaDetectada = detectados.find((c) => c !== canal);
+return (
+<React.Fragment>
+{otaDetectada && (
+<div style={{ background: "rgba(168,62,50,0.15)", border: `1px solid ${T.red}`, color: "#E8B4AC", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 10 }}>
+⚠️ Aloha / el formulario indican <b>{otaDetectada}</b>, pero elegiste <b>{canal}</b>. Revísalo en Aloha antes de continuar.
+</div>
+)}
+{canal === "Directo" && (
+<label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, marginBottom: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+border: `1px solid ${canalFalta ? T.red : T.cardBorder}`, background: canalFalta ? "rgba(168,62,50,0.12)" : "transparent" }}>
+<input type="checkbox" checked={canalConfirmado} onChange={(e) => { setCanalConfirmado(e.target.checked); if (e.target.checked) setCanalFalta(false); }} />
+<span>Confirmé en Aloha que esta reserva es <b>DIRECTA</b> (no viene de Booking.com ni Expedia). <span style={{ color: T.ivoryMuted }}>Si es de una OTA, cambia el canal: así pasa a Cobros de OTA.</span></span>
+</label>
+)}
+</React.Fragment>
+);
+})()}
 
 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
 <thead>
