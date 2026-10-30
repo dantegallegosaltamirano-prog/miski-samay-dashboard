@@ -32,6 +32,9 @@ red: "#A83E32", green: "#6B8F71", amber: "#B8873B",
 // EDITA ESTA LÍNEA si tu backend tiene otra URL
 const API_BASE_URL = "https://miski-samay-backend-production.up.railway.app";
 const REFRESH_MS = 30000;
+// 29 oct (pedido de Dante): por ahora NO se muestra la tarjeta "Estado de
+// limpieza por domo" en el panel. Para volver a mostrarla, poner true.
+const MOSTRAR_ESTADO_HOUSEKEEPING = false;
 const SESION_KEY = "ms_staff_sesion";
 
 function navItems(sesion) {
@@ -514,7 +517,7 @@ Domo {h.codigo}{h.canal_origen ? ` · ${h.canal_origen}` : ""}{salidaStr ? ` · 
 </div>
 </div>
 
-<div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
+<div style={{ display: MOSTRAR_ESTADO_HOUSEKEEPING ? "block" : "none", background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 32 }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
 <div style={{ fontSize: 15, fontWeight: 600 }}>Estado de limpieza por domo</div>
 <a href="limpieza.html" style={{ fontSize: 11.5, color: T.gold, textDecoration: "none" }}>Ver housekeeping →</a>
