@@ -1949,6 +1949,9 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
   const [metodoConsumo, setMetodoConsumo] = useState("efectivo");
   const [tipoCambioHospedaje, setTipoCambioHospedaje] = useState(0);
   const [tipoCambioConsumo, setTipoCambioConsumo] = useState(0);
+  // Tipo de cambio PROPIO de los adelantos (1 nov): igual que en el check-out
+  // de un domo — la reserva y el adelanto se convierten cada uno con el suyo.
+  const [tipoCambioAdelanto, setTipoCambioAdelanto] = useState(0);
   const [mixtoHospedaje, setMixtoHospedaje] = useState([nuevaParteMixto(), nuevaParteMixto()]);
   const [mixtoConsumo, setMixtoConsumo] = useState([nuevaParteMixto(), nuevaParteMixto()]);
 
@@ -1997,6 +2000,7 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
         const tc = Number(data.tipoCambio) || 0;
         setTipoCambioHospedaje(tc);
         setTipoCambioConsumo(tc);
+        setTipoCambioAdelanto(tc);
         setCargandoFolio(false);
       })
       .catch(() => { setErrorFolio("No se pudo cargar el folio combinado"); setCargandoFolio(false); });
@@ -2016,37 +2020,61 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
 
   const tipoCambioRef = folioCombo?.tipoCambio || null;
 
-  // Cada domo aplica SU PROPIO adelanto contra SU PROPIO saldo — no hace
-  // falta prorratear nada entre domos, cada uno ya trae el dato exacto.
-  const domosConSaldo = (folioCombo?.domos || []).map(d => {
-    const saldoHospedajeUsd = aplicarAdelantoA === "hospedaje" ? Math.max(0, d.montoAlojamientoUsd - d.adelantoPagado) : d.montoAlojamientoUsd;
-    const adelantoSolesParaConsumo = aplicarAdelantoA === "consumo" && tipoCambioRef ? d.adelantoPagado * tipoCambioRef : 0;
-    const saldoConsumoSoles = Math.max(0, d.totalConsumosSoles - adelantoSolesParaConsumo);
-    return { ...d, saldoHospedajeUsd, saldoConsumoSoles };
-  });
-
-  const saldoHospedajeUsdTotal = domosConSaldo.reduce((a, d) => a + d.saldoHospedajeUsd, 0);
-  const saldoConsumoSolesTotal = domosConSaldo.reduce((a, d) => a + d.saldoConsumoSoles, 0);
-
+  // 1 nov (pedido de Dante, caso Nathalie Yerly): igual que el check-out de
+  // un domo — primero se convierte la RESERVA a la moneda de cobro (con su
+  // TC), luego el ADELANTO de cada domo en su propia moneda (con el TC del
+  // adelanto), y recién al final se resta. El comprobante sale por la
+  // reserva completa; el adelanto va como parte "adelanto" del mixto.
+  const tcHosp = Number(tipoCambioHospedaje) || 0;
+  const tcCons = Number(tipoCambioConsumo) || 0;
+  const tcAdel = Number(tipoCambioAdelanto) || 0;
+  function convertir(monto, de, a, tc) {
+    if (de === a) return monto;
+    if (!(tc > 0)) return 0;
+    return de === "USD" ? monto * tc : monto / tc;
+  }
   const usaTipoCambioHospedaje = monedaHospedaje === "PEN";
   const usaTipoCambioConsumo = monedaConsumo === "USD";
 
-  const montoCobroHospedaje = usaTipoCambioHospedaje
-    ? saldoHospedajeUsdTotal * (Number(tipoCambioHospedaje) || 0)
-    : saldoHospedajeUsdTotal;
-  const montoCobroConsumo = usaTipoCambioConsumo
-    ? (Number(tipoCambioConsumo) > 0 ? saldoConsumoSolesTotal / Number(tipoCambioConsumo) : 0)
-    : saldoConsumoSolesTotal;
+  const domosConSaldo = (folioCombo?.domos || []).map(d => {
+    const adMoneda = d.adelantoMoneda === "PEN" && Number(d.adelantoMontoOriginal) > 0 ? "PEN" : "USD";
+    const adMonto = adMoneda === "PEN" ? Number(d.adelantoMontoOriginal) : Number(d.adelantoPagado) || 0;
+    const reservaHosp = convertir(d.montoAlojamientoUsd, "USD", monedaHospedaje, tcHosp);
+    const adHosp = aplicarAdelantoA === "hospedaje" ? Math.min(convertir(adMonto, adMoneda, monedaHospedaje, tcAdel), reservaHosp) : 0;
+    const reservaCons = convertir(d.totalConsumosSoles, "PEN", monedaConsumo, tcCons);
+    const adCons = aplicarAdelantoA === "consumo" ? Math.min(convertir(adMonto, adMoneda, monedaConsumo, tcAdel), reservaCons) : 0;
+    return {
+      ...d, adMoneda, adMonto,
+      reservaHosp, adHosp, saldoHosp: Math.max(0, reservaHosp - adHosp),
+      reservaCons, adCons, saldoCons: Math.max(0, reservaCons - adCons),
+      // compatibilidad con vistas que usan los nombres anteriores
+      saldoHospedajeUsd: d.montoAlojamientoUsd, saldoConsumoSoles: d.totalConsumosSoles,
+    };
+  });
+  const sumar = (k) => domosConSaldo.reduce((a, d) => a + d[k], 0);
+  const reservaHospTotal = sumar("reservaHosp");
+  const adelantoHospTotal = sumar("adHosp");
+  const montoCobroHospedaje = Math.max(0, reservaHospTotal - adelantoHospTotal);
+  const reservaConsTotal = sumar("reservaCons");
+  const adelantoConsTotal = sumar("adCons");
+  const montoCobroConsumo = Math.max(0, reservaConsTotal - adelantoConsTotal);
+  const saldoHospedajeUsdTotal = domosConSaldo.reduce((a, d) => a + d.montoAlojamientoUsd, 0);
+  const saldoConsumoSolesTotal = domosConSaldo.reduce((a, d) => a + d.totalConsumosSoles, 0);
 
-  const hayHospedajeQueCobrar = saldoHospedajeUsdTotal > 0.009;
-  const hayConsumoQueCobrar = saldoConsumoSolesTotal > 0.009;
+  const hayAdelantoDistintaMoneda = domosConSaldo.some(d => d.adMonto > 0 && (
+    (aplicarAdelantoA === "hospedaje" && d.adMoneda !== monedaHospedaje) ||
+    (aplicarAdelantoA === "consumo" && d.adMoneda !== monedaConsumo)));
+  const hayLineaHosp = saldoHospedajeUsdTotal > 0.009;
+  const hayLineaCons = saldoConsumoSolesTotal > 0.009;
+  const hayHospedajeQueCobrar = montoCobroHospedaje > 0.009 || (hayLineaHosp && usaTipoCambioHospedaje && !(tcHosp > 0));
+  const hayConsumoQueCobrar = montoCobroConsumo > 0.009 || (hayLineaCons && usaTipoCambioConsumo && !(tcCons > 0));
 
   const hayPropinaQueCobrar = Number(montoPropina) > 0.009;
 
   const gruposComprobantePorMoneda = {};
   if (puedeEmitir) {
-    if (hayHospedajeQueCobrar) (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
-    if (hayConsumoQueCobrar) (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
+    if (hayLineaHosp) (gruposComprobantePorMoneda[monedaHospedaje] = gruposComprobantePorMoneda[monedaHospedaje] || []).push("Hospedaje");
+    if (hayLineaCons) (gruposComprobantePorMoneda[monedaConsumo] = gruposComprobantePorMoneda[monedaConsumo] || []).push("Consumo");
     if (hayPropinaQueCobrar) (gruposComprobantePorMoneda[monedaPropina] = gruposComprobantePorMoneda[monedaPropina] || []).push("Propina");
   }
 
@@ -2057,59 +2085,57 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
   const mixtoConsumoOk = metodoConsumo !== "mixto" || !hayConsumoQueCobrar || Math.abs(sumaMixtoConsumo - round2(montoCobroConsumo)) < 0.01;
   const mixtoPropinaOk = metodoPropina !== "mixto" || !hayPropinaQueCobrar || Math.abs(sumaMixtoPropina - round2(Number(montoPropina) || 0)) < 0.01;
 
-  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayHospedajeQueCobrar || Number(tipoCambioHospedaje) > 0;
-  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayConsumoQueCobrar || Number(tipoCambioConsumo) > 0;
+  const tipoCambioHospedajeOk = !usaTipoCambioHospedaje || !hayLineaHosp || tcHosp > 0;
+  const tipoCambioConsumoOk = !usaTipoCambioConsumo || !hayLineaCons || tcCons > 0;
+  const tipoCambioAdelantoOk = !hayAdelantoDistintaMoneda || tcAdel > 0;
 
-  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk;
+  const puedeEnviar = mixtoHospedajeOk && mixtoConsumoOk && mixtoPropinaOk && tipoCambioHospedajeOk && tipoCambioConsumoOk && tipoCambioAdelantoOk;
 
   const hayComprobantePorEmitir = Object.keys(gruposComprobantePorMoneda).length > 0;
   const facturaDatosOk = tipoComprobante !== "factura" || !hayComprobantePorEmitir
     || (facturaRuc.trim().length === 11 && facturaRazonSocial.trim().length > 0);
 
+  // Desglose por domo del TOTAL de la reserva (lo que va al comprobante).
   function construirDesglosePorReserva(concepto, montoLineaTotal) {
-    const items = concepto === "hospedaje"
-      ? domosConSaldo.filter(d => d.saldoHospedajeUsd > 0.009)
-      : domosConSaldo.filter(d => d.saldoConsumoSoles > 0.009);
+    const k = concepto === "hospedaje" ? "reservaHosp" : "reservaCons";
+    const items = domosConSaldo.filter(d => d[k] > 0.009);
     if (items.length === 0) return [];
-    const brutos = items.map(d => {
-      if (concepto === "hospedaje") {
-        return usaTipoCambioHospedaje ? d.saldoHospedajeUsd * (Number(tipoCambioHospedaje) || 0) : d.saldoHospedajeUsd;
-      }
-      return usaTipoCambioConsumo ? (Number(tipoCambioConsumo) > 0 ? d.saldoConsumoSoles / Number(tipoCambioConsumo) : 0) : d.saldoConsumoSoles;
-    });
-    const partes = repartirRedondeado(brutos, montoLineaTotal);
+    const partes = repartirRedondeado(items.map(d => d[k]), montoLineaTotal);
     return items.map((d, i) => ({ reservaId: d.reservaId, monto: partes[i] }));
+  }
+
+  // Línea = total de la reserva; el adelanto entra como parte "adelanto" del
+  // mixto y lo cobrado hoy como el resto de partes.
+  function armarLinea(concepto, moneda, reservaTotal, adelantoTotal, cobroHoy, metodo, mixto, tc, usaTc) {
+    const total = round2(reservaTotal);
+    const adelanto = round2(Math.min(adelantoTotal, reservaTotal));
+    const hoy = round2(total - adelanto);
+    const linea = { concepto, monto: total, moneda, desglosePorReserva: construirDesglosePorReserva(concepto, total) };
+    if (usaTc) linea.tipoCambio = tc;
+    const partesHoy = hoy > 0.009
+      ? (metodo === "mixto" ? mixto.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) })) : [{ metodo, monto: hoy }])
+      : [];
+    if (adelanto > 0.009) {
+      linea.metodoPago = "mixto";
+      linea.detalleMixto = [{ metodo: "adelanto", monto: adelanto }, ...partesHoy];
+    } else {
+      linea.metodoPago = metodo;
+      if (metodo === "mixto") linea.detalleMixto = partesHoy;
+    }
+    if (gruposComprobantePorMoneda[moneda]) {
+      linea.tipoComprobante = tipoComprobante;
+      if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
+    }
+    return linea;
   }
 
   function construirPagosCombo() {
     const pagos = [];
-    if (hayHospedajeQueCobrar) {
-      const montoLinea = round2(montoCobroHospedaje);
-      const linea = {
-        concepto: "hospedaje", monto: montoLinea, moneda: monedaHospedaje, metodoPago: metodoHospedaje,
-        desglosePorReserva: construirDesglosePorReserva("hospedaje", montoLinea),
-      };
-      if (usaTipoCambioHospedaje) linea.tipoCambio = Number(tipoCambioHospedaje);
-      if (metodoHospedaje === "mixto") linea.detalleMixto = mixtoHospedaje.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
-      if (gruposComprobantePorMoneda[monedaHospedaje]) {
-        linea.tipoComprobante = tipoComprobante;
-        if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
-      }
-      pagos.push(linea);
+    if (hayLineaHosp && reservaHospTotal > 0.009) {
+      pagos.push(armarLinea("hospedaje", monedaHospedaje, reservaHospTotal, adelantoHospTotal, montoCobroHospedaje, metodoHospedaje, mixtoHospedaje, tcHosp, usaTipoCambioHospedaje));
     }
-    if (hayConsumoQueCobrar) {
-      const montoLinea = round2(montoCobroConsumo);
-      const linea = {
-        concepto: "consumo", monto: montoLinea, moneda: monedaConsumo, metodoPago: metodoConsumo,
-        desglosePorReserva: construirDesglosePorReserva("consumo", montoLinea),
-      };
-      if (usaTipoCambioConsumo) linea.tipoCambio = Number(tipoCambioConsumo);
-      if (metodoConsumo === "mixto") linea.detalleMixto = mixtoConsumo.map(p => ({ metodo: p.metodo, monto: round2(Number(p.monto) || 0) }));
-      if (gruposComprobantePorMoneda[monedaConsumo]) {
-        linea.tipoComprobante = tipoComprobante;
-        if (tipoComprobante === "factura") { linea.facturaRuc = facturaRuc.trim(); linea.facturaRazonSocial = facturaRazonSocial.trim(); }
-      }
-      pagos.push(linea);
+    if (hayLineaCons && reservaConsTotal > 0.009) {
+      pagos.push(armarLinea("consumo", monedaConsumo, reservaConsTotal, adelantoConsTotal, montoCobroConsumo, metodoConsumo, mixtoConsumo, tcCons, usaTipoCambioConsumo));
     }
     if (hayPropinaQueCobrar) {
       const montoLinea = round2(Number(montoPropina) || 0);
@@ -2336,16 +2362,52 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
       {/* HOSPEDAJE */}
       <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje ({domosConSaldo.length} domos)</div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
-          <span>US$ {fmt(saldoHospedajeUsdTotal)}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
           <BotonMoneda moneda={monedaHospedaje} onChange={setMonedaHospedaje} />
         </div>
-        {usaTipoCambioHospedaje && hayHospedajeQueCobrar && (
+        {(() => {
+          const sim = monedaHospedaje === "USD" ? "US$" : "S/";
+          const fila = { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "3px 0" };
+          return (
+            <div style={{ background: T.bg, borderRadius: 10, padding: "8px 12px", marginBottom: 6 }}>
+              {domosConSaldo.filter(d => d.montoAlojamientoUsd > 0).map(d => (
+                <React.Fragment key={d.reservaId}>
+                  <div style={fila}>
+                    <span>{d.domoCodigo} · Reserva <span style={{ color: T.ivoryMuted }}>US$ {fmt(d.montoAlojamientoUsd)}{usaTipoCambioHospedaje ? ` × ${tcHosp || "?"}` : ""}</span></span>
+                    <span>{sim} {fmt(d.reservaHosp)}</span>
+                  </div>
+                  {d.adHosp > 0 && (
+                    <div style={{ ...fila, color: T.green }}>
+                      <span>&nbsp;&nbsp;− Adelanto <span style={{ color: T.ivoryMuted }}>{d.adMoneda === "USD" ? "US$" : "S/"} {fmt(d.adMonto)}{d.adMoneda !== monedaHospedaje ? (d.adMoneda === "USD" ? ` × ${tcAdel || "?"}` : ` ÷ ${tcAdel || "?"}`) : ""}</span></span>
+                      <span>− {sim} {fmt(d.adHosp)}</span>
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+              <div style={{ ...fila, borderTop: `1px solid ${T.cardBorder}`, marginTop: 4, paddingTop: 6 }}>
+                <span>Total reservas</span><span>{sim} {fmt(reservaHospTotal)}</span>
+              </div>
+              {adelantoHospTotal > 0 && (
+                <div style={{ ...fila, color: T.green }}><span>− Total adelantos</span><span>− {sim} {fmt(adelantoHospTotal)}</span></div>
+              )}
+              <div style={{ ...fila, fontWeight: 700, fontSize: 13 }}>
+                <span>Saldo a cobrar hoy</span><span style={{ color: T.gold }}>{sim} {fmt(montoCobroHospedaje)}</span>
+              </div>
+            </div>
+          );
+        })()}
+        {aplicarAdelantoA === "hospedaje" && hayAdelantoDistintaMoneda && (
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (venta) — S/ por US$1:</span>
+            <span style={{ fontSize: 11.5, color: T.green, flex: 1 }}>Tipo de cambio de los adelantos — S/ por US$1:</span>
+            <input type="number" min="0" step="0.001" value={tipoCambioAdelanto}
+              onChange={(e) => setTipoCambioAdelanto(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tcAdel > 0 ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
+        {usaTipoCambioHospedaje && hayLineaHosp && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio de la reserva — S/ por US$1:</span>
             <input type="number" min="0" step="0.001" value={tipoCambioHospedaje}
               onChange={(e) => setTipoCambioHospedaje(e.target.value)}
               style={{ width: 90, background: T.bg, border: `1px solid ${tipoCambioHospedajeOk ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
@@ -2371,12 +2433,21 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🍽️ Consumo ({domosConSaldo.length} domos)</div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 10 }}>
           <span>S/ {fmt(saldoConsumoSolesTotal)}</span>
+          {adelantoConsTotal > 0 && <span style={{ color: T.green }}>− adelantos {monedaConsumo === "USD" ? "US$" : "S/"} {fmt(adelantoConsTotal)}</span>}
         </div>
+        {aplicarAdelantoA === "consumo" && hayAdelantoDistintaMoneda && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 11.5, color: T.green, flex: 1 }}>Tipo de cambio de los adelantos — S/ por US$1:</span>
+            <input type="number" min="0" step="0.001" value={tipoCambioAdelanto}
+              onChange={(e) => setTipoCambioAdelanto(e.target.value)}
+              style={{ width: 90, background: T.bg, border: `1px solid ${tcAdel > 0 ? T.cardBorder : T.red}`, borderRadius: 6, padding: "6px 8px", color: T.ivory, fontSize: 13 }} />
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
           <div style={{ fontSize: 12, color: T.ivoryMuted }}>Cobrar en:</div>
           <BotonMoneda moneda={monedaConsumo} onChange={setMonedaConsumo} />
         </div>
-        {usaTipoCambioConsumo && hayConsumoQueCobrar && (
+        {usaTipoCambioConsumo && hayLineaCons && (
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
             <span style={{ fontSize: 11.5, color: T.amber, flex: 1 }}>Tipo de cambio (compra) — S/ por US$1:</span>
             <input type="number" min="0" step="0.001" value={tipoCambioConsumo}
@@ -2426,7 +2497,12 @@ function CheckoutCombinado({ huespedes, cargandoHuespedes, puedeEmitir, staffId 
       {/* ADELANTOS — uno por domo, ya registrados al hacer check-in */}
       {folioCombo.adelantoPagadoTotal > 0 && (
         <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelantos ya pagados (US$ {fmt(folioCombo.adelantoPagadoTotal)} en total)</div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>💰 Adelantos ya pagados</div>
+          <div style={{ fontSize: 12, marginBottom: 8 }}>
+            {domosConSaldo.filter(d => d.adMonto > 0).map(d => (
+              <div key={d.reservaId}>· {d.domoCodigo}: {d.adMoneda === "USD" ? "US$" : "S/"} {fmt(d.adMonto)}</div>
+            ))}
+          </div>
           <div style={{ fontSize: 11.5, color: T.ivoryMuted, marginBottom: 10 }}>
             Cada domo aplica el adelanto que ya tiene registrado desde su propio check-in — si alguno está mal, corrígelo antes desde el check-out individual de ese domo.
           </div>
