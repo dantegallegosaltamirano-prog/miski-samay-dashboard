@@ -65,6 +65,33 @@ function fechaCorta(f) {
   return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
 }
 
+// Búsqueda (1 nov, pedido de Dante): sin tildes ni mayúsculas, por varias
+// palabras ("lily d3" encuentra a Lily en el domo D3).
+function normalizarBusqueda(t) {
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function coincideBusqueda(textos, q) {
+  const palabras = normalizarBusqueda(q).split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return true;
+  const todo = normalizarBusqueda(textos.filter((x) => x != null).join(" "));
+  return palabras.every((w) => todo.includes(w));
+}
+function CajaBusqueda({ valor, onChange, placeholder, total, visibles }) {
+  return (
+    <div className="no-imprimir" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 520 }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.ivoryMuted, fontSize: 14 }}>🔍</span>
+        <input value={valor} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+          style={{ width: "100%", boxSizing: "border-box", background: T.card, border: `1px solid ${valor ? T.gold : T.cardBorder}`, borderRadius: 10, padding: "10px 34px 10px 36px", color: T.ivory, fontSize: 13.5, fontFamily: "inherit" }} />
+        {valor && (
+          <button onClick={() => onChange("")} title="Limpiar" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.ivoryMuted, fontSize: 16, cursor: "pointer" }}>✕</button>
+        )}
+      </div>
+      {valor && <span style={{ fontSize: 12, color: T.ivoryMuted }}>{visibles} de {total} resultado(s)</span>}
+    </div>
+  );
+}
+
 function Check({ ok }) {
   return (
     <span style={{ color: ok ? T.green : T.ivoryMuted, fontSize: 15 }}>
@@ -387,6 +414,9 @@ function ReporteComprobantes() {
 
   const comprobantes = datos ? datos.comprobantes : [];
   const totales = datos ? datos.totales : null;
+  const [busquedaComp, setBusquedaComp] = useState("");
+  const comprobantesVisibles = comprobantes.filter((c) => coincideBusqueda(
+    [c.tipoComprobante, c.numeroComprobante, c.nombreCliente, c.moneda, c.montoPen, c.montoUsd, c.fechaEmision], busquedaComp));
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ivory, padding: 24, fontSize: 14 }}>
@@ -491,8 +521,11 @@ function ReporteComprobantes() {
               </div>
             </div>
 
-            {comprobantes.length === 0 ? (
-              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>No hay comprobantes emitidos para {MESES[mes - 1]} {anio}.</div>
+            <CajaBusqueda valor={busquedaComp} onChange={setBusquedaComp}
+              placeholder="Buscar por cliente, N° de comprobante (B002-147), monto…"
+              total={comprobantes.length} visibles={comprobantesVisibles.length} />
+            {comprobantesVisibles.length === 0 ? (
+              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>{comprobantes.length === 0 ? `No hay comprobantes emitidos para ${MESES[mes - 1]} ${anio}.` : `Ningún comprobante coincide con "${busquedaComp}".`}</div>
             ) : (
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, overflowX: "auto" }}>
                 <table>
@@ -508,7 +541,7 @@ function ReporteComprobantes() {
                     </tr>
                   </thead>
                   <tbody>
-                    {comprobantes.map((c, i) => (
+                    {comprobantesVisibles.map((c, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${T.cardBorder}` }}>
                         <td style={{ fontSize: 12.5, fontWeight: 600 }}>{c.tipoComprobante} {c.numeroComprobante || "—"}</td>
                         <td style={{ fontSize: 12.5, color: T.ivoryMuted }}>{fechaCorta(c.fechaEmision)}</td>
@@ -768,7 +801,12 @@ function ReportesMensual() {
   const contarCanal = (c) => todas.filter((r) => (r.canal_origen || "Sin canal") === c).length;
   const canales = [...new Set(todas.map((r) => r.canal_origen || "Sin canal"))].sort((a, b) => contarCanal(b) - contarCanal(a));
   const porCanal = todas.filter((r) => filtroCanal === "todos" || (r.canal_origen || "Sin canal") === filtroCanal);
-  const visibles = porCanal.filter((r) => filtroCobro === "todos" || estadoCobro(r).grupo === filtroCobro);
+  const [busqueda, setBusqueda] = useState("");
+  const porCobro = porCanal.filter((r) => filtroCobro === "todos" || estadoCobro(r).grupo === filtroCobro);
+  const visibles = porCobro.filter((r) => coincideBusqueda([
+    r.nombre_completo, r.domo_codigo, r.canal_origen, r.booking_id_externo, r.referido_por,
+    ...(r.comprobantes || []).map((c) => `${c.tipoComprobante || ""} ${c.numeroComprobante || ""}`),
+  ], busqueda));
   const OPCIONES_COBRO = [
     ["todos", "Todos"],
     ["hotel", "🏨 Hotel collect"],
@@ -909,8 +947,11 @@ function ReportesMensual() {
               </div>
             </div>
 
+            <CajaBusqueda valor={busqueda} onChange={setBusqueda}
+              placeholder="Buscar huésped, domo (D3), N° de reserva, comprobante (B002-147)…"
+              total={porCobro.length} visibles={visibles.length} />
             {visibles.length === 0 ? (
-              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>{todas.length === 0 ? `No hay reservas registradas para ${MESES[mes - 1]} ${anio}.` : "Ninguna reserva con este filtro."}</div>
+              <div style={{ color: T.ivoryMuted, textAlign: "center", padding: 30 }}>{todas.length === 0 ? `No hay reservas registradas para ${MESES[mes - 1]} ${anio}.` : busqueda ? `Ninguna reserva coincide con "${busqueda}".` : "Ninguna reserva con este filtro."}</div>
             ) : (
               <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, overflowX: "auto" }}>
                 <table>
