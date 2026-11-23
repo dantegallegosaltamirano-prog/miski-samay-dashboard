@@ -126,6 +126,8 @@ const [linkCopiado, setLinkCopiado] = useState(false);
 
 const [nombre, setNombre] = useState("");
 const [tipoDocumento, setTipoDocumento] = useState("");
+const [tamVerificada, setTamVerificada] = useState(null); // true / false / null (sin revisar)
+const [tamFechaIngreso, setTamFechaIngreso] = useState("");
 const [numeroDocumento, setNumeroDocumento] = useState("");
 const [enviando, setEnviando] = useState(false);
 
@@ -374,6 +376,8 @@ body: JSON.stringify({
 nombreCompleto: nombre,
 tipoDocumento: tipoDocumento,
 numeroDocumento: numeroDocumento,
+tamVerificada: tipoDocumento === "Pasaporte" ? tamVerificada : null,
+tamFechaIngreso: tipoDocumento === "Pasaporte" && tamVerificada === true ? (tamFechaIngreso || null) : null,
 domoCodigo: domoSel,
 montoTotal: totales.totalUsd,
 pais: pais,
@@ -515,6 +519,25 @@ Por ahora se llenan a mano (el escaneo automático vuelve cuando esté lista la 
 </select>
 <input style={inputStyle} placeholder="N° de documento" value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} />
 </div>
+{tipoDocumento === "Pasaporte" && (
+  <div style={{ border: `1px solid ${T.cardBorder}`, borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13 }}>
+    <div style={{ fontWeight: 700, marginBottom: 4 }}>🛂 TAM — Tarjeta Andina de Migración</div>
+    <div style={{ color: T.ivoryMuted, fontSize: 12, marginBottom: 10 }}>Para el beneficio de exportación (hospedaje sin IGV a turistas extranjeros): revisa en Migraciones el ingreso del huésped al Perú. El botón copia el pasaporte para pegarlo allá.</div>
+    <button type="button" onClick={() => { try { navigator.clipboard.writeText((numeroDocumento || "").replace(/[^A-Za-z0-9]/g, "")); } catch (e) {} window.open("https://www.gob.pe/institucion/migraciones/campa%C3%B1as/28799-descarga-tu-tarjeta-andina-de-migracion-virtual", "_blank"); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${T.gold}`, background: "transparent", color: T.gold, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>🔎 Verificar TAM en Migraciones</button>
+    <div style={{ marginBottom: 6 }}>¿TAM verificada (ingresó al Perú como turista)?</div>
+    <div style={{ display: "flex", gap: 8, marginBottom: tamVerificada === true ? 10 : 0 }}>
+      {[{ v: true, t: "✅ Sí" }, { v: false, t: "❌ No" }].map((o) => (
+        <button key={o.t} type="button" onClick={() => setTamVerificada(o.v)} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontWeight: 700, border: `1px solid ${tamVerificada === o.v ? T.gold : T.cardBorder}`, background: tamVerificada === o.v ? "rgba(201,162,74,0.15)" : "transparent", color: tamVerificada === o.v ? T.gold : T.ivory }}>{o.t}</button>
+      ))}
+    </div>
+    {tamVerificada === true && (
+      <div>
+        <div style={{ fontSize: 12, color: T.ivoryMuted, marginBottom: 4 }}>Fecha de ingreso al Perú (según la TAM)</div>
+        <input type="date" style={inputStyle} value={tamFechaIngreso} onChange={(e) => setTamFechaIngreso(e.target.value)} />
+      </div>
+    )}
+  </div>
+)}
 <select style={{ ...inputStyle, marginBottom: 8 }} value={pais} onChange={(e) => setPais(e.target.value)}>
 <option value="">Selecciona país</option>
 {PAISES.map((p) => <option key={p} value={p}>{p}</option>)}
