@@ -335,7 +335,7 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
           </div>
         ) : (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 16 }}>
-          <span>Estadía completa</span>
+          <span>Estadía completa <span style={{ color: T.ivoryMuted, fontWeight: 400, fontSize: 12 }}>(IGV incluido)</span></span>
           <span style={{ fontWeight: 700, color: T.gold }}>US$ {fmt(hospedajeUsd)}</span>
         </div>
         )}
@@ -385,7 +385,7 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
         )}
         {detalle.length > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 700, borderTop: `1px solid ${T.cardBorder}`, marginTop: 6, paddingTop: 8, marginBottom: 16 }}>
-            <span>Total consumo</span>
+            <span>Total consumo <span style={{ color: T.ivoryMuted, fontWeight: 400, fontSize: 12 }}>(IGV incluido)</span></span>
             <span style={{ color: T.gold }}>S/ {fmt(totalConsumoSoles)}</span>
           </div>
         )}
@@ -1801,7 +1801,7 @@ function PreCuentaCombinada({ folioCombo, titularReservaId, onTitularChange, onC
           <span>Total hospedaje</span><span style={{ fontWeight: 700 }}>US$ {fmt(folioCombo.montoAlojamientoUsdTotal)}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 4 }}>
-          <span>Total consumo</span><span style={{ fontWeight: 700 }}>S/ {fmt(folioCombo.totalConsumosSolesTotal)}</span>
+          <span>Total consumo <span style={{ color: T.ivoryMuted, fontWeight: 400, fontSize: 12 }}>(IGV incluido)</span></span><span style={{ fontWeight: 700 }}>S/ {fmt(folioCombo.totalConsumosSolesTotal)}</span>
         </div>
         {folioCombo.adelantoPagadoTotal > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.green }}>
@@ -3123,7 +3123,7 @@ function CheckoutPantalla() {
             </div>
             ) : (
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏕️ Hospedaje <span style={{ color: T.ivoryMuted, fontWeight: 400, fontSize: 12 }}>(IGV incluido)</span></div>
               {["Booking.com", "Expedia"].includes(folio.canalOrigen) && (
                 <BotonModalidadCobro reservaId={reservaSel.reserva_id} canal={folio.canalOrigen} actual="hotel" onCambio={cargarFolio} />
               )}
@@ -3213,7 +3213,7 @@ function CheckoutPantalla() {
 
             {/* CONSUMO */}
             <div style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🍽️ Consumo</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🍽️ Consumo <span style={{ color: T.ivoryMuted, fontWeight: 400, fontSize: 12 }}>(IGV incluido)</span></div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: T.ivoryMuted, marginBottom: 4 }}>
                 <span>S/ {fmt(consumoSoles)}</span>
                 <span>≈ US$ {fmt(consumoUsd)}</span>
