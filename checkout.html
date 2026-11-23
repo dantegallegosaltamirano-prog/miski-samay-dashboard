@@ -317,6 +317,24 @@ function PreCuenta({ folio, reservaSel, onContinuar, onFolioActualizado }) {
 
   return (
     <div>
+      {folio && folio.cliente && folio.cliente.tipoDocumento === "Pasaporte" && (() => {
+        // Aviso interno (no se imprime): ¿califica el hospedaje como exportación de servicios?
+        const c = folio.cliente;
+        const ingreso = c.tamFechaIngreso ? new Date(String(c.tamFechaIngreso).slice(0, 10)) : null;
+        const salida = c.fechaSalida ? new Date(String(c.fechaSalida).slice(0, 10)) : null;
+        const dias = ingreso && salida ? Math.round((salida - ingreso) / 86400000) : null;
+        const califica = c.tamVerificada === true && dias !== null && dias >= 0 && dias <= 60;
+        const msg = califica
+          ? `✅ Califica para exportación (hospedaje sin IGV): TAM verificada, ingresó al Perú hace ${dias} día(s) al check-out. Todavía NO se aplica en la boleta hasta confirmar con SUNAT/contador.`
+          : c.tamVerificada === true
+            ? "⚠️ TAM verificada pero falta la fecha de ingreso o la estadía en el Perú supera 60 días: no califica para exportación."
+            : c.tamVerificada === false
+              ? "❌ TAM no verificada en el check-in: no califica para exportación (hospedaje con IGV)."
+              : "⚠️ Pasaporte sin verificación de TAM en el check-in: no califica para exportación (hospedaje con IGV).";
+        return (
+          <div style={{ border: `1px solid ${califica ? "#3f8f5a" : T.cardBorder}`, background: califica ? "rgba(63,143,90,0.12)" : "transparent", borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: T.ivory }}>{msg}</div>
+        );
+      })()}
       <div id="pre-cuenta-imprimible" style={{ background: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Miski Samay Domo Boutique</div>
