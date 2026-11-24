@@ -107,6 +107,9 @@ setReserva({
 id: data.id, canal: data.canal_origen || "Directo",
 huespedPax: data.adultos || 1, fechas,
 huespedNombre: data.huesped,
+correo: data.huesped_email || "", celular: data.huesped_celular || "", domo: data.domo_codigo || null,
+alohaCodigo: data.aloha_codigo || null, alohaTotal: data.aloha_total, alohaPagado: data.aloha_pagado,
+alohaMoneda: data.aloha_moneda || null, alohaAdultos: data.aloha_adultos || null,
 etiquetaFechas: `${fechas.length} noche(s)`,
 });
 setCargando(false);
@@ -175,7 +178,10 @@ if (Array.isArray(data)) setDomosOcupados(data.map(d => d.codigo));
 React.useEffect(() => {
 if (reserva) {
 setCanal(reserva.canal);
-setNoches(reserva.fechas.map((f) => ({ fecha: f, base: "", impuesto: "", servicio: "", comision: "" })));
+setNoches(reserva.fechas.map((f) => ({ fecha: f, base: (reserva.canal === "Directo" && reserva.alohaTotal && (reserva.alohaMoneda || "USD") === "USD" && reserva.fechas.length) ? (Number(reserva.alohaTotal) / reserva.fechas.length).toFixed(2) : "", impuesto: "", servicio: "", comision: "" })));
+if (reserva.correo) setCorreo((v) => v || reserva.correo);
+if (reserva.celular) setCelular((v) => v || reserva.celular);
+if (reserva.domo) setDomoSel((v) => v || reserva.domo);
 if (reserva.huespedNombre && reserva.huespedNombre !== "Por confirmar en check-in") {
 setNombre(reserva.huespedNombre);
 }
@@ -509,6 +515,11 @@ return (
 <div style={{ fontSize: 11, color: T.ivoryMuted, marginBottom: 10 }}>
 Por ahora se llenan a mano (el escaneo automático vuelve cuando esté lista la conexión con Aloha en setiembre).
 </div>
+{reserva && reserva.alohaCodigo && (
+<div style={{ fontSize: 12, color: T.ivoryMuted, border: `1px solid ${T.cardBorder}`, borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
+📥 Datos traídos de Aloha ({reserva.alohaCodigo}){reserva.alohaTotal != null ? ` · Total ${reserva.alohaMoneda || "USD"} ${Number(reserva.alohaTotal).toFixed(2)}` : ""}{Number(reserva.alohaPagado) > 0 ? ` · Ya pagado ${reserva.alohaMoneda || "USD"} ${Number(reserva.alohaPagado).toFixed(2)}` : ""}{reserva.alohaAdultos ? ` · ${reserva.alohaAdultos} adulto(s)` : ""}. Revisa y completa lo que falte (canal, documento, país).
+</div>
+)}
 <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Nombre completo" value={nombre} onChange={(e) => setNombre(e.target.value)} />
 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
 <select style={inputStyle} value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)}>
